@@ -15,7 +15,7 @@ export default function TablesPage() {
   const [success, setSuccess] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
 
-  // Automatically detect the site URL (localhost or your deployed domain)
+  // Fixed Logic: Detects your domain automatically after deployment
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setBaseUrl(window.location.origin);
@@ -40,7 +40,6 @@ export default function TablesPage() {
     setTables(tables.filter(t => t.id !== id));
   };
 
-  // Function to trigger a print of the QR codes
   const handlePrint = () => {
     window.print();
   };
@@ -48,7 +47,6 @@ export default function TablesPage() {
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-5xl mx-auto w-full">
-        {/* Header - Hidden during print */}
         <div className="print:hidden">
           <h2 className="text-3xl font-black mb-2 text-slate-900 tracking-tighter">QR Generator</h2>
           <p className="text-slate-500 mb-8">Generate unique scan-to-order codes for every table.</p>
@@ -88,10 +86,9 @@ export default function TablesPage() {
           </div>
         </div>
 
-        {/* QR Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 print:block">
           {tables.map((table) => {
-            // Encode the name to handle spaces like "Table 1" -> "Table%201"
+            // Logic Fixed: Ensures table names with spaces work correctly in URLs
             const qrValue = `${baseUrl}/?table=${encodeURIComponent(table.name)}`;
             
             return (
@@ -99,7 +96,6 @@ export default function TablesPage() {
                 key={table.id}
                 className="bg-white rounded-[24px] p-8 border border-slate-200 shadow-xl flex flex-col items-center relative group print:shadow-none print:border-dashed print:mb-10"
               >
-                {/* Delete button - Hidden during print */}
                 <button 
                   onClick={() => removeTable(table.id)}
                   className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors print:hidden"
@@ -115,7 +111,7 @@ export default function TablesPage() {
                   <QRCode
                     value={qrValue}
                     size={200}
-                    level="H" // High error correction (better for stickers)
+                    level="H" 
                     fgColor="#000000"
                   />
                 </div>
@@ -130,7 +126,6 @@ export default function TablesPage() {
         </div>
       </div>
 
-      {/* Printing Styles */}
       <style jsx global>{`
         @media print {
           body { background: white !important; }

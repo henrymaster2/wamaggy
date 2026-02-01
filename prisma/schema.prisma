@@ -7,15 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// =========================
+// FOOD (UNCHANGED LOGIC)
+// =========================
 model Food {
   id          Int      @id @default(autoincrement())
   name        String
-  category    String   @default("Food") // Stores 'Food', 'Drinks', 'Fruits', etc.
+  category    String   @default("Food")
   price       Float
   description String
   status      String   @default("Available")
   imageUrl    String
-  variations  Json?    // Stores the list of sizes/prices for drinks/fruits
+  variations  Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// =========================
+// ORDERS (NEW)
+// =========================
+model Order {
+  id        Int         @id @default(autoincrement())
+  table     String?
+  total     Float
+  status    String      @default("PENDING")
+  createdAt DateTime    @default(now())
+
+  items     OrderItem[]
+}
+
+// =========================
+// ORDER ITEMS (SNAPSHOT)
+// =========================
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+
+  orderId  Int
+  foodId   Int
+
+  name     String
+  price    Float
+  imageUrl String
+
+  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
