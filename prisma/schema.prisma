@@ -3,12 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
 }
 
 // =========================
-// FOOD (UNCHANGED LOGIC)
+// FOOD
 // =========================
 model Food {
   id          Int      @id @default(autoincrement())
@@ -24,7 +24,7 @@ model Food {
 }
 
 // =========================
-// ORDERS (NEW)
+// ORDERS
 // =========================
 model Order {
   id        Int         @id @default(autoincrement())
@@ -37,10 +37,10 @@ model Order {
 }
 
 // =========================
-// ORDER ITEMS (SNAPSHOT)
+// ORDER ITEMS
 // =========================
 model OrderItem {
-  id        Int     @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
 
   orderId  Int
   foodId   Int
@@ -49,5 +49,5 @@ model OrderItem {
   price    Float
   imageUrl String
 
-  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
