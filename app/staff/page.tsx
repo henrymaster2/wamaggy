@@ -66,19 +66,27 @@ export default function AddFoodPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Strict Validation
     if (!name || !description || !image) {
-        alert("Please fill in all required fields and upload an image.");
+        alert("Please provide a Name, Description, and Image.");
         return;
     }
-    if (category === 'Food' && !price) {
-        alert("Please set a price for the food item.");
+
+    // Determine final price: Use base price input unless variations are present for drinks/fruits
+    const finalPrice = category === 'Food' 
+      ? Number(price) 
+      : (variations.length > 0 ? variations[0].price : Number(price));
+
+    if (!finalPrice || finalPrice <= 0) {
+        alert("Please set a valid price (Base Price or Variation Price).");
         return;
     }
 
     setSubmitting(true);
 
     try {
-      // 1. Upload Image
+      // 2. Upload Image to Cloudinary via your API
       const formData = new FormData();
       formData.append('file', image);
 
@@ -90,13 +98,13 @@ export default function AddFoodPage() {
       if (!uploadRes.ok) throw new Error('Image upload failed');
       const { imageUrl } = await uploadRes.json();
 
-      // 2. Save Item with correct Category and Status
+      // 3. Save Item to Database
       const payload = {
         name,
-        category, // This allows backend to route to separate tables/collections
-        price: category === 'Food' ? price : (variations.length > 0 ? variations[0].price : 0),
+        category,
+        price: finalPrice,
         description,
-        status, // Sending the actual state value
+        status,
         imageUrl,
         variations: category !== 'Food' ? variations : [],
       };
@@ -107,11 +115,14 @@ export default function AddFoodPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error('Failed to save item');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to save item to database');
+      }
 
       setSuccess(true);
       
-      // Reset form only after successful response
+      // Reset form
       setName('');
       setPrice('');
       setDescription('');
@@ -121,9 +132,9 @@ export default function AddFoodPage() {
       setVariations([]);
 
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to save. Please check your connection.');
+      alert(err.message || 'An error occurred while saving.');
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +158,7 @@ export default function AddFoodPage() {
       <aside className="w-64 bg-white border-r border-slate-200 flex-col hidden md:flex sticky top-0 h-screen">
         <div className="p-6 text-center">
           <h1 className="text-xl font-bold bg-linear-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-            Wamaggy Choma
+            African Cuisine
           </h1>
           <p className="text-[10px] text-slate-500 font-bold tracking-[0.2em] uppercase">Staff Panel</p>
         </div>
@@ -182,7 +193,6 @@ export default function AddFoodPage() {
             )}
           </div>
 
-          {/* Category Selection Bar */}
           <div className="flex gap-2 mb-8 bg-slate-200/50 p-1.5 rounded-2xl w-fit border border-slate-200">
             {[
               { id: 'Food', icon: Pizza },
@@ -214,7 +224,6 @@ export default function AddFoodPage() {
                       placeholder={`e.g. ${category === 'Drinks' ? 'Soda' : 'Mbuzi Choma'}`}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -226,24 +235,22 @@ export default function AddFoodPage() {
                         className="w-full pl-14 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none transition-all font-medium"
                         placeholder="0.00"
                         value={price}
-                        onChange={(e) => setPrice(Number(e.target.value))}
-                        required={category === 'Food'}
+                        onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Variations Section */}
                 {category !== 'Food' && (
                   <div className="p-5 bg-orange-50/50 rounded-2xl border border-orange-100 space-y-4">
                     <div className="flex justify-between items-center">
                         <label className="text-xs font-black uppercase text-orange-800 tracking-widest">Sizes / Variations</label>
-                        <span className="text-[10px] text-orange-400 font-bold uppercase">Add at least one</span>
+                        <span className="text-[10px] text-orange-400 font-bold uppercase italic">Recommended for drinks</span>
                     </div>
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="e.g. 500ml or Large"
+                        placeholder="e.g. 500ml"
                         className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none text-sm font-medium"
                         value={varType}
                         onChange={(e) => setVarType(e.target.value)}
@@ -253,7 +260,7 @@ export default function AddFoodPage() {
                         placeholder="Price"
                         className="w-28 px-4 py-2 rounded-xl border border-slate-200 outline-none text-sm font-medium"
                         value={varPrice}
-                        onChange={(e) => setVarPrice(Number(e.target.value))}
+                        onChange={(e) => setVarPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       />
                       <button 
                         type="button" 
@@ -282,7 +289,6 @@ export default function AddFoodPage() {
                     placeholder="Short description for the customer..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    required
                   />
                 </div>
 
@@ -313,15 +319,14 @@ export default function AddFoodPage() {
                   disabled={submitting}
                   className="w-full bg-slate-900 hover:bg-black text-white font-black uppercase tracking-widest py-5 rounded-2xl shadow-xl transition-all active:scale-[0.98] disabled:opacity-50"
                 >
-                  {submitting ? 'Uploading to Menu...' : `Add to ${category} Section`}
+                  {submitting ? 'Syncing...' : `Add to ${category} Section`}
                 </button>
               </form>
             </div>
 
-            {/* Preview Section */}
             <div className="h-fit sticky top-8">
               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-2">Customer Preview</h3>
-              <div className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-2xl group">
+              <div className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-2xl">
                 <div className="relative">
                   {imagePreview ? (
                     <img src={imagePreview} className="w-full h-64 object-cover" alt="Preview" />
@@ -334,17 +339,13 @@ export default function AddFoodPage() {
                   <div className="absolute top-5 right-5 scale-110"><StatusBadge status={status} /></div>
                 </div>
                 <div className="p-8">
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-black text-2xl text-slate-800 italic uppercase tracking-tighter leading-tight">{name || 'New Item'}</h4>
-                  </div>
+                  <h4 className="font-black text-2xl text-slate-800 italic uppercase tracking-tighter leading-tight">{name || 'New Item'}</h4>
                   
                   {category !== 'Food' && variations.length > 0 ? (
                     <div className="mt-3">
-                      <select className="text-xs font-black border-2 border-slate-100 rounded-lg px-3 py-2 bg-slate-50 outline-none w-full text-orange-600">
-                        {variations.map((v, i) => (
-                          <option key={i}>{v.type} — KSh {v.price}</option>
-                        ))}
-                      </select>
+                      <div className="text-xs font-black border-2 border-slate-100 rounded-lg px-3 py-2 bg-slate-50 text-orange-600">
+                        {variations[0].type} — KSh {variations[0].price}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-orange-600 font-black text-2xl mt-1 tracking-tighter">KSh {price || '0.00'}</p>
@@ -354,10 +355,10 @@ export default function AddFoodPage() {
                     {description || 'Product details will appear here for the customer.'}
                   </p>
                   <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center">
-                    <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full uppercase tracking-widest shadow-sm">
+                    <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full uppercase tracking-widest">
                       {category}
                     </span>
-                    <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white shadow-lg">
+                    <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white">
                       <PlusCircle size={20} />
                     </div>
                   </div>

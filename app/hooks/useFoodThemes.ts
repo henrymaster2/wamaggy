@@ -2,13 +2,20 @@
 
 import { useEffect, useState } from 'react';
 
+export interface FoodVariation {
+  type: string;
+  price: number;
+}
+
 export interface FoodItem {
   id: number;
   name: string;
+  category: string;
   price: number;
   description: string;
-  status: 'Available' | 'Pending' | 'Not Available';
-  imageUrl?: string;
+  status: 'Available' | 'Pending' | 'Not Available' | string;
+  imageUrl: string;
+  variations?: FoodVariation[];
 }
 
 export interface FoodWithTheme extends FoodItem {

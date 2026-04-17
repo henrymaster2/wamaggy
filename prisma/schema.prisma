@@ -3,51 +3,49 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// =========================
-// FOOD
-// =========================
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String?
+  phone     String   @unique
+  email     String?
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
 model Food {
   id          Int      @id @default(autoincrement())
-  name        String
+  name        String   @unique
   category    String   @default("Food")
   price       Float
   description String
   status      String   @default("Available")
   imageUrl    String
-  variations  Json?
+  variations  Json?    @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-// =========================
-// ORDERS
-// =========================
 model Order {
   id        Int         @id @default(autoincrement())
   table     String?
   total     Float
   status    String      @default("PENDING")
   createdAt DateTime    @default(now())
-
+  userId    Int?
+  user      User?       @relation(fields: [userId], references: [id])
   items     OrderItem[]
 }
 
-// =========================
-// ORDER ITEMS
-// =========================
 model OrderItem {
   id        Int    @id @default(autoincrement())
-
-  orderId  Int
-  foodId   Int
-
-  name     String
-  price    Float
-  imageUrl String
-
-  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   Int
+  foodId    Int
+  name      String
+  price     Float
+  imageUrl  String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }

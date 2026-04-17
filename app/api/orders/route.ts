@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 /**
- * POST: Save new order from customer
+ * POST: Save new order from customer (linked to User)
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { tableNumber, items, total } = body;
+    const { tableNumber, items, total, userId } = body;
 
     if (!items || items.length === 0) {
       return NextResponse.json(
@@ -20,7 +20,9 @@ export async function POST(req: Request) {
       data: {
         table: tableNumber ? String(tableNumber) : 'Takeaway',
         total: total,
-        status: 'PENDING', // Updated to uppercase to match frontend logic
+        status: 'PENDING',
+        // Link to user if userId is provided
+        userId: userId ? Number(userId) : null,
         items: {
           create: items.map((item: any) => ({
             foodId: item.id,
@@ -46,11 +48,18 @@ export async function POST(req: Request) {
 }
 
 /**
- * GET: Fetch all orders for staff dashboard
+ * GET: Fetch all orders for staff OR history for a specific user
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('userId');
+
+    // Build filter: if userId exists, fetch only for that user
+    const whereClause = userId ? { userId: Number(userId) } : {};
+
     const orders = await prisma.order.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       include: {
         items: true,
