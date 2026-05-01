@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence, PanInfo, Variants } from 'framer-motion';
 import { useFoodThemes, type FoodWithTheme } from './hooks/useFoodThemes';
-import { ShoppingBag, X, Utensils, LogOut, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, X, Utensils, LogOut, ArrowRight, CheckCircle2, Plus } from 'lucide-react';
 
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
@@ -183,50 +183,75 @@ function SliderContent() {
         </div>
       </header>
 
-      {/* MENU SLIDER */}
-      <div className="relative h-[60vh] w-full flex items-center justify-center">
-        <AnimatePresence mode="wait" custom={direction}>
-          {currentFood && (
-            <motion.div key={currentFood.id} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" className="absolute flex flex-col items-center w-full px-6">
-              
-              {/* Image with Cinematic Morph */}
-              <motion.img 
-                animate={{ 
-                  scale: isExpanded ? 0.6 : 1, 
-                  y: isExpanded ? -60 : 0,
-                  borderRadius: isExpanded ? "40px" : "500px" 
-                }}
-                transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                src={currentFood.imageUrl} 
-                className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/5 z-10" 
-              />
+      {/* MENU CONTENT (GRID FOR 'ALL', SLIDER FOR OTHERS) */}
+      <div className="relative h-[65vh] w-full">
+        {activeCategory === 'All' ? (
+          <div className="h-full w-full overflow-y-auto no-scrollbar px-6 pb-24">
+            <div className="grid grid-cols-2 gap-4">
+              {filteredFoods.map((food) => (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }} 
+                  animate={{ opacity: 1, y: 0 }}
+                  key={food.id} 
+                  className="bg-white/5 border border-white/10 rounded-[30px] p-4 flex flex-col gap-3"
+                >
+                  <img src={food.imageUrl} className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
+                  <div>
+                    <h3 className="text-white font-black uppercase italic text-[10px] truncate">{food.name}</h3>
+                    <p className="text-orange-500 font-black text-[12px] italic">KSh {food.price}</p>
+                  </div>
+                  <button 
+                    onClick={() => addToBucket(food)}
+                    className="w-full py-2 bg-white/10 hover:bg-white hover:text-black text-white text-[8px] font-black uppercase rounded-xl transition-all"
+                  >
+                    Add +
+                  </button>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-full w-full flex items-center justify-center">
+            <AnimatePresence mode="wait" custom={direction}>
+              {currentFood && (
+                <motion.div key={currentFood.id} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" className="absolute flex flex-col items-center w-full px-6">
+                  <motion.img 
+                    animate={{ 
+                      scale: isExpanded ? 0.6 : 1, 
+                      y: isExpanded ? -60 : 0,
+                      borderRadius: isExpanded ? "40px" : "500px" 
+                    }}
+                    transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                    src={currentFood.imageUrl} 
+                    className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/5 z-10" 
+                  />
 
-              {!isExpanded ? (
-                <div className="text-center mt-8 relative z-20">
-                  <h2 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white mb-6 drop-shadow-lg">{currentFood.name}</h2>
-                  <button onClick={() => setIsExpanded(true)} className="px-10 py-3.5 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-full font-black uppercase text-[10px] tracking-[0.3em] transition-all">View Details</button>
-                </div>
-              ) : (
-                <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md bg-white/5 backdrop-blur-3xl border border-white/10 p-8 rounded-[40px] -mt-16 z-30">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-black text-white uppercase italic">{currentFood.name}</h3>
-                    <div className="text-2xl font-black italic text-white">KSh {currentFood.price}</div>
-                  </div>
-                  <p className="text-white/50 text-xs mb-8 leading-relaxed">{currentFood.description}</p>
-                  <div className="flex gap-3">
-                    <button onClick={() => addToBucket(currentFood)} className="flex-[2] py-4 bg-orange-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 shadow-lg">Add to bucket</button>
-                    <button onClick={() => setIsExpanded(false)} className="flex-1 py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-[9px] uppercase tracking-widest">Back</button>
-                  </div>
+                  {!isExpanded ? (
+                    <div className="text-center mt-8 relative z-20">
+                      <h2 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white mb-6 drop-shadow-lg">{currentFood.name}</h2>
+                      <button onClick={() => setIsExpanded(true)} className="px-10 py-3.5 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-full font-black uppercase text-[10px] tracking-[0.3em] transition-all">View Details</button>
+                    </div>
+                  ) : (
+                    <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md bg-white/5 backdrop-blur-3xl border border-white/10 p-8 rounded-[40px] -mt-16 z-30">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-black text-white uppercase italic">{currentFood.name}</h3>
+                        <div className="text-2xl font-black italic text-white">KSh {currentFood.price}</div>
+                      </div>
+                      <p className="text-white/50 text-xs mb-8 leading-relaxed">{currentFood.description}</p>
+                      <div className="flex gap-3">
+                        <button onClick={() => addToBucket(currentFood)} className="flex-[2] py-4 bg-orange-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 shadow-lg">Add to bucket</button>
+                        <button onClick={() => setIsExpanded(false)} className="flex-1 py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-[9px] uppercase tracking-widest">Back</button>
+                      </div>
+                    </motion.div>
+                  )}
+                  {!isExpanded && (
+                    <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={handleDragEnd} className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing" />
+                  )}
                 </motion.div>
               )}
-              
-              {/* Transparent Drag Layer - Only active when NOT expanded */}
-              {!isExpanded && (
-                <motion.div drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={handleDragEnd} className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing" />
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       {/* BUCKET / CART DRAWER */}
@@ -308,8 +333,8 @@ function SliderContent() {
         )}
       </AnimatePresence>
 
-      {/* PAGINATION DOTS */}
-      {!isExpanded && (
+      {/* PAGINATION DOTS (HIDDEN FOR 'ALL' TAB) */}
+      {!isExpanded && activeCategory !== 'All' && (
         <div className="absolute bottom-10 left-0 w-full flex justify-center gap-3">
           {filteredFoods.map((_, i) => (
             <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i === currentIndex ? 'w-10 bg-orange-600 shadow-[0_0_10px_rgba(234,88,12,0.5)]' : 'w-2 bg-white/10'}`} />
