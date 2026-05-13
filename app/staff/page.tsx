@@ -26,6 +26,55 @@ interface Variation {
   price: number;
 }
 
+const MAX_IMAGE_WIDTH = 1600;
+const MAX_IMAGE_HEIGHT = 1600;
+const IMAGE_QUALITY = 0.82;
+
+async function prepareImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please select an image file.');
+  }
+
+  const imageUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('This image could not be read. Try a JPG, PNG, or WebP file.'));
+      img.src = imageUrl;
+    });
+
+    const scale = Math.min(
+      1,
+      MAX_IMAGE_WIDTH / image.naturalWidth,
+      MAX_IMAGE_HEIGHT / image.naturalHeight
+    );
+    const width = Math.round(image.naturalWidth * scale);
+    const height = Math.round(image.naturalHeight * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+
+    ctx.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', IMAGE_QUALITY);
+    });
+
+    if (!blob) return file;
+
+    const fileName = file.name.replace(/\.[^.]+$/, '') || 'menu-item';
+    return new File([blob], `${fileName}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 export default function AddFoodPage() {
   const pathname = usePathname();
   
@@ -56,11 +105,15 @@ export default function AddFoodPage() {
     setVariations(variations.filter((_, i) => i !== index));
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImage(file);
-      setImagePreview(URL.createObjectURL(file));
+      try {
+        const file = await prepareImageForUpload(e.target.files[0]);
+        setImage(file);
+        setImagePreview(URL.createObjectURL(file));
+      } catch (err: any) {
+        alert(err.message || 'Could not prepare this image for upload.');
+      }
     }
   };
 
@@ -95,8 +148,9 @@ export default function AddFoodPage() {
         body: formData,
       });
 
-      if (!uploadRes.ok) throw new Error('Image upload failed');
-      const { imageUrl } = await uploadRes.json();
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || 'Image upload failed');
+      const { imageUrl } = uploadData;
 
       // 3. Save Item to Database
       const payload = {

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "AFRICAN CUISINE",
   description: "Digital menu and ordering system for AFRICAN CUISINE",
   manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
   themeColor: "#000000",
 };
 

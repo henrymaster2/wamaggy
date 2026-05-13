@@ -9,6 +9,23 @@ import { ShoppingBag, X, Utensils, LogOut } from 'lucide-react';
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
 type OrderSummary = { id: number; total: number; status: string };
+type FoodStatus = 'Available' | 'Pending' | 'Not Available' | string;
+
+const getStatusClass = (status: FoodStatus) => {
+  if (status === 'Available') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+  if (status === 'Pending') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+  return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+};
+
+const isFoodAvailable = (food?: FoodWithTheme) => food?.status === 'Available';
+
+function AvailabilityBadge({ status }: { status: FoodStatus }) {
+  return (
+    <span className={`px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest ${getStatusClass(status)}`}>
+      {status || 'Not Available'}
+    </span>
+  );
+}
 
 function SliderContent() {
   const searchParams = useSearchParams();
@@ -87,6 +104,7 @@ function SliderContent() {
   };
 
   const addToBucket = (food: FoodWithTheme) => {
+    if (!isFoodAvailable(food)) return;
     setCart([...cart, food]);
     setIsExpanded(false);
   };
@@ -198,14 +216,18 @@ function SliderContent() {
                 >
                   <img src={food.imageUrl} className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
                   <div>
+                    <div className="mb-2">
+                      <AvailabilityBadge status={food.status} />
+                    </div>
                     <h3 className="text-white font-black uppercase italic text-[10px] truncate">{food.name}</h3>
                     <p className="text-orange-500 font-black text-[12px] italic">KSh {food.price}</p>
                   </div>
                   <button 
                     onClick={() => addToBucket(food)}
-                    className="w-full py-2 bg-white/10 hover:bg-white hover:text-black text-white text-[8px] font-black uppercase rounded-xl transition-all"
+                    disabled={!isFoodAvailable(food)}
+                    className="w-full py-2 bg-white/10 hover:bg-white hover:text-black text-white text-[8px] font-black uppercase rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/10 disabled:hover:text-white"
                   >
-                    Add +
+                    {isFoodAvailable(food) ? 'Add +' : 'Unavailable'}
                   </button>
                 </motion.div>
               ))}
@@ -229,18 +251,30 @@ function SliderContent() {
 
                   {!isExpanded ? (
                     <div className="text-center mt-8 relative z-20">
+                      <div className="mb-4 flex justify-center">
+                        <AvailabilityBadge status={currentFood.status} />
+                      </div>
                       <h2 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white mb-6 drop-shadow-lg">{currentFood.name}</h2>
                       <button onClick={() => setIsExpanded(true)} className="px-10 py-3.5 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-full font-black uppercase text-[10px] tracking-[0.3em] transition-all">View Details</button>
                     </div>
                   ) : (
                     <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md bg-white/5 backdrop-blur-3xl border border-white/10 p-8 rounded-[40px] -mt-16 z-30">
+                      <div className="mb-4">
+                        <AvailabilityBadge status={currentFood.status} />
+                      </div>
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-black text-white uppercase italic">{currentFood.name}</h3>
                         <div className="text-2xl font-black italic text-white">KSh {currentFood.price}</div>
                       </div>
                       <p className="text-white/50 text-xs mb-8 leading-relaxed">{currentFood.description}</p>
                       <div className="flex gap-3">
-                        <button onClick={() => addToBucket(currentFood)} className="flex-[2] py-4 bg-orange-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 shadow-lg">Add to bucket</button>
+                        <button
+                          onClick={() => addToBucket(currentFood)}
+                          disabled={!isFoodAvailable(currentFood)}
+                          className="flex-[2] py-4 bg-orange-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          {isFoodAvailable(currentFood) ? 'Add to bucket' : 'Unavailable'}
+                        </button>
                         <button onClick={() => setIsExpanded(false)} className="flex-1 py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-[9px] uppercase tracking-widest">Back</button>
                       </div>
                     </motion.div>
