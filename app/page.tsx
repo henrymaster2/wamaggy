@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence, PanInfo, Variants } from 'framer-motion';
 import { useFoodThemes, type FoodWithTheme } from './hooks/useFoodThemes';
-import { ShoppingBag, X, Utensils, LogOut, ArrowRight, CheckCircle2, Plus } from 'lucide-react';
+import { ShoppingBag, X, Utensils, LogOut } from 'lucide-react';
 
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
@@ -168,10 +167,12 @@ function SliderContent() {
               <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[9px] font-black text-white/40 uppercase tracking-widest">T-{tableNumber}</span>
             </div>
           </div>
-          <button onClick={() => setIsCartOpen(true)} className="flex items-center gap-3 bg-white text-black pl-4 pr-1.5 py-1.5 rounded-2xl active:scale-95 transition-all">
-            <div className="text-right leading-none"><span className="text-[12px] font-black italic">KSh {cartTotal}</span></div>
-            <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center"><ShoppingBag size={18} /></div>
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsCartOpen(true)} className="flex items-center gap-3 bg-white text-black pl-4 pr-1.5 py-1.5 rounded-2xl active:scale-95 transition-all">
+              <div className="text-right leading-none"><span className="text-[12px] font-black italic">KSh {cartTotal}</span></div>
+              <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center"><ShoppingBag size={18} /></div>
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
@@ -217,7 +218,7 @@ function SliderContent() {
                 <motion.div key={currentFood.id} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" className="absolute flex flex-col items-center w-full px-6">
                   <motion.img 
                     animate={{ 
-                      scale: isExpanded ? 0.6 : 1, 
+                      scale: isExpanded ? 0.8 : 1, 
                       y: isExpanded ? -60 : 0,
                       borderRadius: isExpanded ? "40px" : "500px" 
                     }}

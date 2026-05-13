@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wamaggy Restaurant",
-  description: "Digital menu and ordering system for Wamaggy Restaurant",
+  title: "AFRICAN CUISINE",
+  description: "Digital menu and ordering system for AFRICAN CUISINE",
+  manifest: "/manifest.json",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -23,19 +26,33 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        {/* Google AdSense verification */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3305351377558338"
-          crossOrigin="anonymous"
-        ></script>
-      </head>
+    <html lang="en" className="scroll-smooth">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
       >
+        <Script
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3305351377558338"
+          strategy="afterInteractive"
+          crossOrigin="anonymous"
+        />
         {children}
+
+        {/* FORCE SERVICE WORKER REGISTRATION */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                    console.log('PWA: ServiceWorker active', reg.scope);
+                  }).catch(function(err) {
+                    console.log('PWA: ServiceWorker failed', err);
+                  });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
