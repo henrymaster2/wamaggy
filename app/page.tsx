@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence, PanInfo, Variants } from 'framer-motion';
 import { useFoodThemes, type FoodWithTheme } from './hooks/useFoodThemes';
@@ -32,6 +32,7 @@ function AvailabilityBadge({ status }: { status: FoodStatus }) {
 }
 
 function SliderContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const tableNumber = searchParams.get('table') || 'Takeaway';
   
@@ -50,6 +51,8 @@ function SliderContent() {
   const [currentUser, setCurrentUser] = useState<Customer | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pastOrders, setPastOrders] = useState<OrderSummary[]>([]);
+  const staffPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressMenuClick = useRef(false);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('wamaggy_customer');
@@ -102,6 +105,38 @@ function SliderContent() {
     setIsCartOpen(false);
     setIsSidebarOpen(false);
   };
+
+  const clearStaffPressTimer = () => {
+    if (staffPressTimer.current) {
+      clearTimeout(staffPressTimer.current);
+      staffPressTimer.current = null;
+    }
+  };
+
+  const handleMenuPressStart = () => {
+    clearStaffPressTimer();
+    staffPressTimer.current = setTimeout(() => {
+      suppressMenuClick.current = true;
+      router.push('/staff');
+    }, 5000);
+  };
+
+  const handleMenuPressEnd = () => {
+    clearStaffPressTimer();
+  };
+
+  const handleMenuClick = () => {
+    if (suppressMenuClick.current) {
+      suppressMenuClick.current = false;
+      return;
+    }
+
+    setIsSidebarOpen(true);
+  };
+
+  useEffect(() => {
+    return () => clearStaffPressTimer();
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -231,7 +266,15 @@ function SliderContent() {
       {/* HEADER */}
       <header className="relative z-50 flex flex-col p-6 md:p-10 gap-6">
         <button 
-          onClick={() => setIsSidebarOpen(true)}
+          onPointerDown={handleMenuPressStart}
+          onPointerUp={handleMenuPressEnd}
+          onPointerLeave={handleMenuPressEnd}
+          onPointerCancel={handleMenuPressEnd}
+          onClick={handleMenuClick}
+          onContextMenu={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setIsSidebarOpen(true);
+          }}
           aria-label="Open menu"
           className="fixed left-3 top-3 z-[95] h-12 w-12 rounded-full border border-white/25 bg-white/10 text-white shadow-2xl shadow-black/25 backdrop-blur-md ring-1 ring-white/15 active:scale-90 transition-transform hover:bg-white/25"
         >
@@ -304,11 +347,11 @@ function SliderContent() {
             drag="x" 
             dragConstraints={{ left: 0, right: 0 }} 
             onDragEnd={handleDragEnd}
-            className="relative h-[65vh] w-full flex items-center justify-center touch-none"
+            className="relative h-[calc(100dvh-215px)] md:h-[65vh] w-full flex items-center justify-center touch-none"
           >
             <AnimatePresence mode="wait" custom={direction}>
               {currentFood && (
-                <motion.div key={currentFood.id} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" className="absolute flex flex-col items-center w-full px-6 pointer-events-none">
+                <motion.div key={currentFood.id} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" className="absolute flex flex-col items-center w-full px-6 pointer-events-none translate-y-6 md:translate-y-0">
                   <motion.img 
                     animate={{ scale: isExpanded ? 0.8 : 1, y: isExpanded ? -60 : 0, borderRadius: isExpanded ? "40px" : "500px" }}
                     transition={{ type: "spring", stiffness: 100, damping: 20 }}

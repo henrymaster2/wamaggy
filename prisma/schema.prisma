@@ -14,6 +14,7 @@ model User {
   email     String?
   createdAt DateTime @default(now())
   orders    Order[]
+  bookings  MealBooking[]
 }
 
 model Food {
@@ -48,4 +49,20 @@ model OrderItem {
   price     Float
   imageUrl  String
   order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model MealBooking {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  time        String
+  guests      Int
+  preferences String?
+  status      String   @default("BOOKED")
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
