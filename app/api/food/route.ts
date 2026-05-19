@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/prisma.config"; // Ensure this path matches your project structure
+import { prisma } from "@/lib/prisma";
+
+const webpush = require("web-push");
+const vapidEmail = process.env.VAPID_EMAIL || "admin@africancuisine.com";
+const vapidSubject = vapidEmail.startsWith("mailto:") ? vapidEmail : `mailto:${vapidEmail}`;
+
+// Configure web-push with cryptographic VAPID signatures
+webpush.setVapidDetails(
+  vapidSubject,
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+);
 
 const allowedStatuses = new Set(["Available", "Pending", "Not Available"]);
 
@@ -33,10 +44,55 @@ export async function POST(req: Request) {
         description: description || "",
         status: status || "Available",
         imageUrl,
-        // Save variations as JSON, defaulting to empty array if none provided
         variations: variations || [],
       },
     });
+
+    // 🔔 Real-Time Web Push Broadcast Engine
+    try {
+      // 1. Fetch all active device notification endpoints from PostgreSQL
+      const subscribers = await prisma.pushSubscription.findMany();
+
+      if (subscribers.length > 0) {
+        // 2. Build the visual payload structure your Service Worker listens for
+        const notificationPayload = JSON.stringify({
+          title: "🔥 New Meal Added!",
+          body: `${name} is now available under ${category || "Food"} for KSh ${price}!`,
+          icon: imageUrl || "/icon-192.png",
+          badge: "/icon-192.png",
+          data: { url: "/order-foods" } // Redirect path when tapped
+        });
+
+        console.log(`📢 Broadcasting fresh meal update to ${subscribers.length} device tokens...`);
+
+        // 3. Dispatch encrypted payloads concurrently across all client channels
+        const pushPromises = subscribers.map((sub) => {
+          const pushTarget = {
+            endpoint: sub.endpoint,
+            keys: {
+              auth: sub.auth,
+              p256dh: sub.p256dh,
+            }
+          };
+
+          return webpush.sendNotification(pushTarget, notificationPayload).catch(async (err: any) => {
+            // Automatically housekeep and clean up dead/expired subscription nodes
+            if (err.statusCode === 410 || err.statusCode === 404) {
+              console.log(`🗑️ Cleaning stale subscriber token ID: ${sub.id}`);
+              await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+            } else {
+              console.error(`Anomalous transmission error on Node ${sub.id}:`, err);
+            }
+          });
+        });
+
+        // Run broadcasts as a background promise chain without hanging the primary HTTP thread
+        Promise.all(pushPromises);
+      }
+    } catch (pushError) {
+      // Caught inside a isolated block so notification engine errors never crash food database writes
+      console.error("Background notification broadcast failed safely:", pushError);
+    }
 
     return NextResponse.json(item);
   } catch (error: any) {

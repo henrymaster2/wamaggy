@@ -8,13 +8,27 @@ datasource db {
 }
 
 model User {
+  id            Int                @id @default(autoincrement())
+  name          String?
+  phone         String             @unique
+  email         String?
+  createdAt     DateTime           @default(now())
+  orders        Order[]
+  bookings      MealBooking[]
+  // Relation link: track all devices/tokens assigned to a logged-in user
+  subscriptions PushSubscription[] 
+}
+
+model PushSubscription {
   id        Int      @id @default(autoincrement())
-  name      String?
-  phone     String   @unique
-  email     String?
+  endpoint  String   @unique // The unique browser delivery URL (Google/Mozilla push server)
+  auth      String   // Cryptographic secret auth key string
+  p256dh    String   // Cryptographic public key string
   createdAt DateTime @default(now())
-  orders    Order[]
-  bookings  MealBooking[]
+  
+  // Optional relation link to User (allows guest push subscribers)
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Food {
@@ -52,17 +66,17 @@ model OrderItem {
 }
 
 model MealBooking {
-  id          Int      @id @default(autoincrement())
-  date        DateTime
-  time        String
-  guests      Int
-  preferences String?
-  status      String   @default("BOOKED")
+  id            Int      @id @default(autoincrement())
+  date          DateTime
+  time          String
+  guests        Int
+  preferences   String?
+  status        String   @default("BOOKED")
   customerName  String?
   customerPhone String?
   customerEmail String?
-  userId      Int?
-  user        User?    @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  userId        Int?
+  user          User?    @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
