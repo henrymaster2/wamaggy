@@ -60,7 +60,7 @@ export async function POST(req: Request) {
           body: `${name} is now available under ${category || "Food"} for KSh ${price}!`,
           icon: imageUrl || "/icon-192.png",
           badge: "/icon-192.png",
-          data: { url: "/order-foods" } // Redirect path when tapped
+          data: { url: `/?foodId=${item.id}` }
         });
 
         console.log(`📢 Broadcasting fresh meal update to ${subscribers.length} device tokens...`);

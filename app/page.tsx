@@ -14,6 +14,7 @@ type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
 type OrderSummary = { id: number; total: number; status: string };
 type FoodStatus = 'Available' | 'Pending' | 'Not Available' | string;
+const menuCategories: Category[] = ['Food', 'Drinks', 'Fruits', 'Others', 'All'];
 
 const getStatusClass = (status: FoodStatus) => {
   if (status === 'Available') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
@@ -35,6 +36,7 @@ function SliderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tableNumber = searchParams.get('table') || 'Takeaway';
+  const targetFoodId = searchParams.get('foodId');
   
   const [activeCategory, setActiveCategory] = useState<Category>('Food');
   const { foods, loading } = useFoodThemes();
@@ -216,9 +218,29 @@ function SliderContent() {
   );
 
   useEffect(() => {
+    if (targetFoodId) return;
     setCurrentIndex(0);
     setIsExpanded(false);
-  }, [activeCategory]);
+  }, [activeCategory, targetFoodId]);
+
+  useEffect(() => {
+    if (!targetFoodId || foods.length === 0) return;
+
+    const targetFood = foods.find((food) => String(food.id) === targetFoodId);
+    if (!targetFood) return;
+
+    const targetCategory = menuCategories.includes(targetFood.category as Category)
+      ? (targetFood.category as Category)
+      : 'All';
+    const targetList = foods.filter((food: FoodWithTheme) =>
+      targetCategory === 'All' ? true : food.category?.toLowerCase() === targetCategory.toLowerCase()
+    );
+    const targetIndex = targetList.findIndex((food) => food.id === targetFood.id);
+
+    setActiveCategory(targetCategory);
+    setCurrentIndex(Math.max(targetIndex, 0));
+    setIsExpanded(true);
+  }, [foods, targetFoodId]);
 
   if (loading) return (
     <div className="h-screen bg-black flex items-center justify-center">
@@ -341,7 +363,7 @@ function SliderContent() {
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
-          {(['Food', 'Drinks', 'Fruits', 'Others', 'All'] as Category[]).map((cat) => (
+          {menuCategories.map((cat) => (
             <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-white/5 text-white/40'}`}>
               {cat}
             </button>
