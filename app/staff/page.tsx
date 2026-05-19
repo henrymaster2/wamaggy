@@ -17,7 +17,8 @@ import {
   Pizza,
   Apple,
   Layers,
-  CalendarDays
+  CalendarDays,
+  Bell
 } from 'lucide-react';
 
 type FoodStatus = 'Available' | 'Pending' | 'Not Available';
@@ -215,6 +216,7 @@ export default function AddFoodPage() {
     { href: '/staff/inventory', label: 'Menu Inventory', icon: Utensils },
     { href: '/staff/orders', label: 'Live Orders', icon: ClipboardList },
     { href: '/staff/booked-meals', label: 'Booked Meals', icon: CalendarDays },
+    { href: '/staff/notifications', label: 'Notifications', icon: Bell },
     { href: '/staff/tables', label: 'Add Table', icon: QrCode },
   ];
 
