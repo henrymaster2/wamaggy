@@ -82,6 +82,7 @@ export default function BookMeals() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
 
     if (!selectedFood) {
       alert('Please choose a meal from the available foods.');
@@ -91,7 +92,7 @@ export default function BookMeals() {
     setSubmitting(true);
     setSuccess(false);
 
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(form);
     const notes = String(formData.get('preferences') || '').trim();
     const mealLine = `Selected meal: ${selectedFood.name} - KSh ${selectedFood.price.toLocaleString()}`;
 
@@ -118,7 +119,7 @@ export default function BookMeals() {
         throw new Error(data.error || 'Booking failed');
       }
 
-      e.currentTarget.reset();
+      form.reset();
       setFoodSearch('');
       setSelectedFoodId('');
       setSuccess(true);

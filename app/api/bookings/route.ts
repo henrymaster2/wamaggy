@@ -3,21 +3,21 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    const bookings = await prisma.$queryRaw`
-      SELECT
-        "id",
-        "date",
-        "time",
-        "guests",
-        "preferences",
-        "status",
-        "customerName",
-        "customerPhone",
-        "customerEmail",
-        "createdAt"
-      FROM "MealBooking"
-      ORDER BY "date" ASC, "time" ASC
-    `;
+    const bookings = await prisma.mealBooking.findMany({
+      orderBy: [{ date: 'asc' }, { time: 'asc' }],
+      select: {
+        id: true,
+        date: true,
+        time: true,
+        guests: true,
+        preferences: true,
+        status: true,
+        customerName: true,
+        customerPhone: true,
+        customerEmail: true,
+        createdAt: true,
+      },
+    });
 
     return NextResponse.json(bookings);
   } catch (error) {
@@ -49,41 +49,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Guests must be a valid number' }, { status: 400 });
     }
 
-    const [booking] = await prisma.$queryRaw<any[]>`
-      INSERT INTO "MealBooking" (
-        "date",
-        "time",
-        "guests",
-        "preferences",
-        "customerName",
-        "customerPhone",
-        "customerEmail",
-        "userId",
-        "updatedAt"
-      )
-      VALUES (
-        ${new Date(`${date}T00:00:00`)},
-        ${String(time)},
-        ${guestCount},
-        ${preferences ? String(preferences) : null},
-        ${customerName ? String(customerName) : null},
-        ${customerPhone ? String(customerPhone) : null},
-        ${customerEmail ? String(customerEmail) : null},
-        ${userId ? Number(userId) : null},
-        CURRENT_TIMESTAMP
-      )
-      RETURNING
-        "id",
-        "date",
-        "time",
-        "guests",
-        "preferences",
-        "status",
-        "customerName",
-        "customerPhone",
-        "customerEmail",
-        "createdAt"
-    `;
+    const booking = await prisma.mealBooking.create({
+      data: {
+        date: new Date(`${date}T00:00:00`),
+        time: String(time),
+        guests: guestCount,
+        preferences: preferences ? String(preferences) : null,
+        customerName: customerName ? String(customerName) : null,
+        customerPhone: customerPhone ? String(customerPhone) : null,
+        customerEmail: customerEmail ? String(customerEmail) : null,
+        userId: userId ? Number(userId) : null,
+      },
+      select: {
+        id: true,
+        date: true,
+        time: true,
+        guests: true,
+        preferences: true,
+        status: true,
+        customerName: true,
+        customerPhone: true,
+        customerEmail: true,
+        createdAt: true,
+      },
+    });
 
     return NextResponse.json(booking, { status: 201 });
   } catch (error: any) {
