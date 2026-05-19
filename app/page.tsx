@@ -50,7 +50,7 @@ function SliderContent() {
 
   const [currentUser, setCurrentUser] = useState<Customer | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [pastOrders, setPastOrders] = useState<OrderSummary[]>([]);
+  const [, setPastOrders] = useState<OrderSummary[]>([]);
   const staffPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressMenuClick = useRef(false);
 
@@ -72,7 +72,9 @@ function SliderContent() {
         const data = await res.json();
         setPastOrders(data);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      console.error(err); 
+    }
   };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -94,8 +96,11 @@ function SliderContent() {
         setShowLoginModal(false);
         fetchUserHistory(data.user.id);
       }
-    } catch { alert("Error connecting to server."); } 
-    finally { setIsSubmitting(false); }
+    } catch { 
+      alert("Error connecting to server."); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const handleLogout = () => {
@@ -130,7 +135,6 @@ function SliderContent() {
       suppressMenuClick.current = false;
       return;
     }
-
     setIsSidebarOpen(true);
   };
 
@@ -155,16 +159,41 @@ function SliderContent() {
   const confirmOrder = async () => {
     if (cart.length === 0 || !currentUser) return;
     setIsSubmitting(true);
+
+    const orderPayload = {
+      id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
+      tableNumber,
+      userId: currentUser.id,
+      items: cart,
+      total: cartTotal,
+      createdAt: new Date().toISOString(),
+      synced: false
+    };
+
+    // 1. OFFLINE SUBMISSION LOGIC
+    if (!navigator.onLine) {
+      try {
+        const { saveOrderOffline } = await import('@/lib/db');
+        await saveOrderOffline(orderPayload);
+        
+        setCart([]);
+        setIsCartOpen(false);
+        alert("⚠️ Saved Offline: Your order is queued locally and will send to the kitchen automatically when your internet restores!");
+      } catch (err) {
+        console.error("Local database error:", err);
+        alert("Could not commit order to offline local storage.");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // 2. LIVE NETWORK SUBMISSION LOGIC
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          tableNumber, 
-          userId: currentUser.id,
-          items: cart,
-          total: cartTotal 
-        }),
+        body: JSON.stringify(orderPayload),
       });
 
       if (response.ok) {
@@ -172,9 +201,14 @@ function SliderContent() {
         setIsCartOpen(false);
         fetchUserHistory(currentUser.id);
         alert("Order sent to the kitchen!");
+      } else {
+        alert("The server was reachable but could not process the order.");
       }
-    } catch { alert("Order failed."); } 
-    finally { setIsSubmitting(false); }
+    } catch { 
+      alert("Network payload transaction failed."); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const filteredFoods = foods.filter((item: FoodWithTheme) => 
@@ -273,7 +307,7 @@ function SliderContent() {
           onClick={handleMenuClick}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') setIsSidebarOpen(true);
+            if (e.key === 'Enter' || e.key === ' ') handleMenuClick();
           }}
           aria-label="Open menu"
           className="fixed left-3 top-3 z-[95] h-12 w-12 rounded-full border border-white/25 bg-white/10 text-white shadow-2xl shadow-black/25 backdrop-blur-md ring-1 ring-white/15 active:scale-90 transition-transform hover:bg-white/25"
@@ -307,15 +341,15 @@ function SliderContent() {
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
-          {['Food', 'Drinks', 'Fruits', 'Others', 'All'].map((cat) => (
-            <button key={cat} onClick={() => setActiveCategory(cat as Category)} className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-white/5 text-white/40'}`}>
+          {(['Food', 'Drinks', 'Fruits', 'Others', 'All'] as Category[]).map((cat) => (
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-white/5 text-white/40'}`}>
               {cat}
             </button>
           ))}
         </div>
       </header>
 
-      {/* MAIN VIEWPORT (SCROLLABLE TO ALLOW FOOTER TO BE VISIBLE) */}
+      {/* MAIN VIEWPORT */}
       <div className="relative h-[calc(100vh-200px)] w-full overflow-y-auto no-scrollbar pb-32">
         {activeCategory === 'All' ? (
           <div className="px-6">
@@ -347,7 +381,7 @@ function SliderContent() {
             drag="x" 
             dragConstraints={{ left: 0, right: 0 }} 
             onDragEnd={handleDragEnd}
-            className="relative h-[calc(100dvh-215px)] md:h-[65vh] w-full flex items-center justify-center touch-none"
+            className="relative h-[calc(100vh-215px)] md:h-[65vh] w-full flex items-center justify-center touch-none"
           >
             <AnimatePresence mode="wait" custom={direction}>
               {currentFood && (
@@ -357,6 +391,7 @@ function SliderContent() {
                     transition={{ type: "spring", stiffness: 100, damping: 20 }}
                     src={currentFood.imageUrl} 
                     className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/5 z-10" 
+                    alt={currentFood.name}
                   />
 
                   {!isExpanded ? (
@@ -390,9 +425,9 @@ function SliderContent() {
           </motion.div>
         )}
 
-        {/* GLOBAL FOOTER - PERSISTENT UNDER EVERYTHING */}
+        {/* GLOBAL FOOTER */}
         <footer className="mt-12 text-center space-y-4 border-t border-white/5 pt-10 px-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20">Powered by Henry Master</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20">Powered by HENRY MASTER</p>
           <div className="flex flex-col items-center gap-2 pb-10">
             <a href="tel:0748172255" className="flex items-center gap-2 text-white/50 hover:text-orange-500 transition-colors">
               <Phone size={12} /> <span className="text-[11px] font-bold">0748172255</span>
@@ -403,8 +438,9 @@ function SliderContent() {
           </div>
         </footer>
       </div>
+      
 
-      {/* FLOATING HELP ICON - LINKS TO USER MANUAL */}
+      {/* FLOATING HELP ICON */}
       <Link href="/user-manual" className="fixed bottom-6 right-6 z-[90] w-14 h-14 bg-orange-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-orange-600/40 active:scale-90 transition-transform">
         <HelpCircle size={28} />
       </Link>
@@ -459,7 +495,7 @@ function SliderContent() {
       <AnimatePresence>
         {showLoginModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[200] bg-black backdrop-blur-3xl flex items-center justify-center p-6 text-center">
-            <div className="w-full max-sm">
+            <div className="w-full max-w-sm">
               <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Utensils className="text-white" size={28} /></div>
               <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-8">African Cuisine</h2>
               <form onSubmit={handleLogin} className="space-y-4 text-left">
@@ -486,5 +522,9 @@ function SliderContent() {
 }
 
 export default function App() {
-  return <Suspense fallback={<div className="h-screen bg-black" />}><SliderContent /></Suspense>;
+  return (
+    <Suspense fallback={<div className="h-screen bg-black" />}>
+      <SliderContent />
+    </Suspense>
+  );
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import ClientSyncProvider from "./ClientSyncProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,10 @@ export default function RootLayout({
           strategy="afterInteractive"
           crossOrigin="anonymous"
         />
+        
+        {/* Executes background synchronization engine on the client side */}
+        <ClientSyncProvider />
+
         {children}
 
         {/* FORCE SERVICE WORKER REGISTRATION */}
