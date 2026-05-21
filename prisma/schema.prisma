@@ -45,14 +45,20 @@ model Food {
 }
 
 model Order {
-  id        Int         @id @default(autoincrement())
-  table     String?
-  total     Float
-  status    String      @default("PENDING")
-  createdAt DateTime    @default(now())
-  userId    Int?
-  user      User?       @relation(fields: [userId], references: [id])
-  items     OrderItem[]
+  id                     Int         @id @default(autoincrement())
+  table                  String?
+  total                  Float
+  status                 String      @default("PENDING")
+  paymentType            String      @default("CASH")
+  paymentStatus          String      @default("PENDING")
+  mpesaCheckoutRequestId String?
+  mpesaMerchantRequestId String?
+  mpesaReceiptNumber     String?
+  mpesaPhone             String?
+  createdAt              DateTime    @default(now())
+  userId                 Int?
+  user                   User?       @relation(fields: [userId], references: [id])
+  items                  OrderItem[]
 }
 
 model OrderItem {

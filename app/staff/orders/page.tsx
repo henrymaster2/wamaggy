@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Clock, CheckCircle, ChefHat, Timer, AlertCircle, RefreshCcw } from 'lucide-react';
+import { Clock, CheckCircle, ChefHat, Timer, AlertCircle, RefreshCcw, Banknote, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface OrderItem {
@@ -16,23 +16,46 @@ interface Order {
   table: string;
   total: number;
   status: string;
+  paymentType: string;
+  paymentStatus: string;
+  mpesaReceiptNumber?: string | null;
   createdAt: string;
   items: OrderItem[];
+}
+
+interface StatCardProps {
+  title: string;
+  value: React.ReactNode;
+  color: string;
+  icon: React.ReactNode;
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // 1. Fetch ALL Orders
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders');
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to fetch orders');
+      }
+
+      if (!Array.isArray(data)) {
+        throw new Error('Orders API returned an invalid response');
+      }
+
       // We keep ALL data here so 'Orders Today' stays accurate
       setOrders(data);
+      setError(null);
     } catch (error) {
       console.error("Failed to fetch orders", error);
+      setOrders([]);
+      setError(error instanceof Error ? error.message : 'Failed to fetch orders');
     } finally {
       setLoading(false);
     }
@@ -57,6 +80,20 @@ export default function OrdersPage() {
     }
   };
 
+  const markPaymentPaid = async (orderId: number) => {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: orderId, paymentStatus: 'PAID' }),
+      });
+
+      if (res.ok) fetchOrders();
+    } catch (error) {
+      console.error("Payment update failed", error);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 8000); 
@@ -67,6 +104,14 @@ export default function OrdersPage() {
   const pendingCount = orders.filter(o => o.status === 'PENDING').length;
   const readyCount = orders.filter(o => o.status === 'READY').length;
   const totalOrdersToday = orders.length; // This will no longer decrease
+  const servedIncome = orders
+    .filter(o => o.status === 'SERVED')
+    .reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const formattedServedIncome = new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    maximumFractionDigits: 0,
+  }).format(servedIncome);
 
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-slate-50 font-black italic text-slate-400">
@@ -81,6 +126,11 @@ export default function OrdersPage() {
         <div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900 uppercase italic">Kitchen Command</h1>
           <p className="text-slate-500 font-medium">Real-time order management system</p>
+          {error && (
+            <p className="mt-2 text-sm font-bold text-red-600">
+              {error}
+            </p>
+          )}
         </div>
         <button 
           onClick={fetchOrders}
@@ -91,10 +141,11 @@ export default function OrdersPage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
         <StatCard title="Pending (Kitchen)" value={pendingCount} color="text-orange-600" icon={<ChefHat size={20}/>} />
         <StatCard title="Ready to Serve" value={readyCount} color="text-blue-600" icon={<CheckCircle size={20}/>} />
         <StatCard title="Total Orders Today" value={totalOrdersToday} color="text-emerald-600" icon={<Timer size={20}/>} />
+        <StatCard title="Served Income" value={formattedServedIncome} color="text-violet-600" icon={<Banknote size={20}/>} />
       </div>
 
       {/* Orders Grid - Visually filtering out SERVED orders */}
@@ -125,8 +176,11 @@ export default function OrdersPage() {
                     <span className="text-[10px] text-white/60 font-medium italic">{new Date(order.createdAt).toLocaleTimeString()}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-[10px] font-bold text-white uppercase tracking-widest">
-                  <Clock size={12} /> {order.status}
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-[10px] font-bold text-white uppercase tracking-widest">
+                    <Clock size={12} /> {order.status}
+                  </div>
+                  <PaymentBadge order={order} />
                 </div>
               </div>
 
@@ -151,6 +205,14 @@ export default function OrdersPage() {
                     <p className="text-lg font-black text-slate-900 italic">KSh {order.total}</p>
                   </div>
                   <div className="flex gap-2">
+                    {order.paymentStatus !== 'PAID' && (
+                      <button
+                        onClick={() => markPaymentPaid(order.id)}
+                        className="px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all"
+                      >
+                        Mark Paid
+                      </button>
+                    )}
                     <button className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
                       <AlertCircle size={20} />
                     </button>
@@ -180,7 +242,7 @@ export default function OrdersPage() {
   );
 }
 
-function StatCard({ title, value, color, icon }: any) {
+function StatCard({ title, value, color, icon }: StatCardProps) {
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
       <div>
@@ -190,6 +252,22 @@ function StatCard({ title, value, color, icon }: any) {
       <div className={`p-4 rounded-2xl bg-slate-50 ${color}`}>
         {icon}
       </div>
+    </div>
+  );
+}
+
+function PaymentBadge({ order }: { order: Order }) {
+  const isMpesa = order.paymentType === 'MPESA';
+  const paid = order.paymentStatus === 'PAID';
+  const failed = order.paymentStatus === 'FAILED';
+  const Icon = isMpesa ? Smartphone : Banknote;
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+      paid ? 'bg-emerald-100 text-emerald-700' : failed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+    }`}>
+      <Icon size={12} />
+      {isMpesa ? 'M-Pesa' : 'Cash'} · {order.paymentStatus || 'PENDING'}
     </div>
   );
 }

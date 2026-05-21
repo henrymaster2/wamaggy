@@ -1,5 +1,23 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+
+type OrderItemPayload = {
+  id: number;
+  name: string;
+  price: number;
+  imageUrl?: string;
+};
+
+type OrderPaymentRow = {
+  id: number;
+  paymentType: string;
+  paymentStatus: string;
+  mpesaCheckoutRequestId: string | null;
+  mpesaMerchantRequestId: string | null;
+  mpesaReceiptNumber: string | null;
+  mpesaPhone: string | null;
+};
 
 /**
  * POST: Save new order from customer (linked to User)
@@ -7,7 +25,8 @@ import { prisma } from '@/lib/prisma';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { tableNumber, items, total, userId } = body;
+    const { tableNumber, items, total, userId, paymentType, paymentStatus, mpesaPhone } = body;
+    const normalizedPaymentType = paymentType === 'MPESA' ? 'MPESA' : 'CASH';
 
     if (!items || items.length === 0) {
       return NextResponse.json(
@@ -24,7 +43,7 @@ export async function POST(req: Request) {
         // Link to user if userId is provided
         userId: userId ? Number(userId) : null,
         items: {
-          create: items.map((item: any) => ({
+          create: items.map((item: OrderItemPayload) => ({
             foodId: item.id,
             name: item.name,
             price: item.price,
@@ -37,11 +56,28 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(order, { status: 201 });
-  } catch (error: any) {
+    await prisma.$executeRaw`
+      UPDATE "Order"
+      SET "paymentType" = ${normalizedPaymentType},
+          "paymentStatus" = ${paymentStatus || 'PENDING'},
+          "mpesaPhone" = ${mpesaPhone || null}
+      WHERE "id" = ${order.id}
+    `;
+
+    return NextResponse.json(
+      {
+        ...order,
+        paymentType: normalizedPaymentType,
+        paymentStatus: paymentStatus || 'PENDING',
+        mpesaPhone: mpesaPhone || null,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown order error';
     console.error('ORDER POST ERROR:', error);
     return NextResponse.json(
-      { error: 'Failed to create order', details: error.message },
+      { error: 'Failed to create order', details: message },
       { status: 500 }
     );
   }
@@ -66,7 +102,30 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json(orders);
+    if (orders.length === 0) return NextResponse.json([]);
+
+    const paymentRows = await prisma.$queryRaw<OrderPaymentRow[]>`
+      SELECT "id",
+             "paymentType",
+             "paymentStatus",
+             "mpesaCheckoutRequestId",
+             "mpesaMerchantRequestId",
+             "mpesaReceiptNumber",
+             "mpesaPhone"
+      FROM "Order"
+      WHERE "id" IN (${Prisma.join(orders.map((order) => order.id))})
+    `;
+    const paymentsByOrderId = new Map(paymentRows.map((row) => [row.id, row]));
+
+    return NextResponse.json(orders.map((order) => ({
+      ...order,
+      paymentType: paymentsByOrderId.get(order.id)?.paymentType || 'CASH',
+      paymentStatus: paymentsByOrderId.get(order.id)?.paymentStatus || 'PENDING',
+      mpesaCheckoutRequestId: paymentsByOrderId.get(order.id)?.mpesaCheckoutRequestId || null,
+      mpesaMerchantRequestId: paymentsByOrderId.get(order.id)?.mpesaMerchantRequestId || null,
+      mpesaReceiptNumber: paymentsByOrderId.get(order.id)?.mpesaReceiptNumber || null,
+      mpesaPhone: paymentsByOrderId.get(order.id)?.mpesaPhone || null,
+    })));
   } catch (error) {
     console.error('ORDER GET ERROR:', error);
     return NextResponse.json(
@@ -82,25 +141,36 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, status } = body;
+    const { id, status, paymentStatus } = body;
 
-    if (!id || !status) {
+    if (!id || (!status && !paymentStatus)) {
       return NextResponse.json(
-        { error: 'Missing order ID or status' },
+        { error: 'Missing order ID or update status' },
         { status: 400 }
       );
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: Number(id) },
-      data: { status: status },
-    });
+    const updatedOrder = status
+      ? await prisma.order.update({
+          where: { id: Number(id) },
+          data: { status: status },
+        })
+      : await prisma.order.findUnique({ where: { id: Number(id) } });
 
-    return NextResponse.json(updatedOrder);
-  } catch (error: any) {
+    if (paymentStatus) {
+      await prisma.$executeRaw`
+        UPDATE "Order"
+        SET "paymentStatus" = ${paymentStatus}
+        WHERE "id" = ${Number(id)}
+      `;
+    }
+
+    return NextResponse.json({ ...updatedOrder, paymentStatus });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown order update error';
     console.error('ORDER PATCH ERROR:', error);
     return NextResponse.json(
-      { error: 'Failed to update order status', details: error.message },
+      { error: 'Failed to update order status', details: message },
       { status: 500 }
     );
   }

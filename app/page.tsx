@@ -21,6 +21,7 @@ import { ShoppingBag, X, LogOut, Menu } from 'lucide-react';
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
 type OrderSummary = { id: number; total: number; status: string };
+type PaymentType = 'CASH' | 'MPESA';
 const menuCategories: Category[] = ['Food', 'Drinks', 'Fruits', 'Others', 'All'];
 
 function SliderContent() {
@@ -36,6 +37,8 @@ function SliderContent() {
   const [direction, setDirection] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [mpesaPhone, setMpesaPhone] = useState('');
 
   const [cart, setCart] = useState<FoodWithTheme[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -149,8 +152,19 @@ function SliderContent() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
 
-  const confirmOrder = async () => {
+  const openPaymentChoice = () => {
     if (cart.length === 0 || !currentUser) return;
+    setMpesaPhone(currentUser.phone || '');
+    setShowPaymentModal(true);
+  };
+
+  const confirmOrder = async (paymentType: PaymentType) => {
+    if (cart.length === 0 || !currentUser) return;
+    if (paymentType === 'MPESA' && !navigator.onLine) {
+      alert('M-Pesa payment needs internet. Please reconnect or choose cash.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     const orderPayload = {
@@ -159,6 +173,9 @@ function SliderContent() {
       userId: currentUser.id,
       items: cart,
       total: cartTotal,
+      paymentType,
+      paymentStatus: 'PENDING',
+      mpesaPhone: paymentType === 'MPESA' ? mpesaPhone : null,
       createdAt: new Date().toISOString(),
       synced: false
     };
@@ -167,10 +184,11 @@ function SliderContent() {
     if (!navigator.onLine) {
       try {
         const { saveOrderOffline } = await import('@/lib/db');
-        await saveOrderOffline(orderPayload);
+        await saveOrderOffline({ ...orderPayload, paymentType: 'CASH', mpesaPhone: null });
         
         setCart([]);
         setIsCartOpen(false);
+        setShowPaymentModal(false);
         alert("⚠️ Saved Offline: Your order is queued locally and will send to the kitchen automatically when your internet restores!");
       } catch (err) {
         console.error("Local database error:", err);
@@ -190,10 +208,29 @@ function SliderContent() {
       });
 
       if (response.ok) {
+        const order = await response.json();
+
+        if (paymentType === 'MPESA') {
+          const stkResponse = await fetch('/api/mpesa/stk-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id, phone: mpesaPhone }),
+          });
+          const stkData = await stkResponse.json();
+
+          if (!stkResponse.ok) {
+            alert(stkData.error || 'Order was sent, but M-Pesa STK push failed.');
+          } else {
+            alert(stkData.customerMessage || 'Order sent. Check your phone for the M-Pesa prompt.');
+          }
+        } else {
+          alert("Order sent to the kitchen! Please pay by cash.");
+        }
+
         setCart([]);
         setIsCartOpen(false);
+        setShowPaymentModal(false);
         fetchUserHistory(currentUser.id);
-        alert("Order sent to the kitchen!");
       } else {
         alert("The server was reachable but could not process the order.");
       }
@@ -467,7 +504,7 @@ function SliderContent() {
                   <span className="text-3xl font-black text-white italic tracking-tighter">KSh {cartTotal}</span>
                 </div>
                 <button 
-                  disabled={cart.length === 0 || isSubmitting} onClick={confirmOrder} 
+                  disabled={cart.length === 0 || isSubmitting} onClick={openPaymentChoice} 
                   className="w-full py-5 bg-white text-black font-black uppercase rounded-2xl active:scale-95 shadow-xl shadow-black/20 disabled:opacity-20"
                 >
                   {isSubmitting ? "Processing..." : "Confirm Order"}
@@ -475,6 +512,56 @@ function SliderContent() {
              </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPaymentModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[180] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
+            <motion.div initial={{ y: 30, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 30, opacity: 0, scale: 0.96 }} className="w-full max-w-sm bg-white rounded-[28px] p-6 text-black shadow-2xl">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-600 mb-2">Payment</p>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter">Choose Method</h2>
+                </div>
+                <button onClick={() => setShowPaymentModal(false)} className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center active:scale-90">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mb-5 rounded-2xl bg-slate-50 border border-slate-100 p-4 flex justify-between items-end">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total</span>
+                <span className="text-2xl font-black italic">KSh {cartTotal}</span>
+              </div>
+
+              <label className="block mb-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">M-Pesa Phone</span>
+                <input
+                  value={mpesaPhone}
+                  onChange={(e) => setMpesaPhone(e.target.value)}
+                  placeholder="0712345678"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:border-orange-500"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => confirmOrder('MPESA')}
+                  disabled={isSubmitting || !mpesaPhone.trim()}
+                  className="w-full py-4 bg-green-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] disabled:opacity-40"
+                >
+                  {isSubmitting ? 'Processing...' : 'Pay with M-Pesa'}
+                </button>
+                <button
+                  onClick={() => confirmOrder('CASH')}
+                  disabled={isSubmitting}
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] disabled:opacity-40"
+                >
+                  Pay Cash
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
