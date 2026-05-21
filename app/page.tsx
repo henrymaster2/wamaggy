@@ -37,6 +37,12 @@ const drawerSpringTransition = {
   damping: 15,
   mass: 1.25,
 } as const;
+const orderDateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 type PageTheme = {
   accent: string;
@@ -113,6 +119,7 @@ function SliderContent() {
   const suppressMenuClick = useRef(false);
   const mainViewportRef = useRef<HTMLDivElement | null>(null);
   const allFoodCardRefs = useRef(new Map<number, HTMLDivElement>());
+  const scrollFrame = useRef<number | null>(null);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('wamaggy_customer');
@@ -199,7 +206,10 @@ function SliderContent() {
   };
 
   useEffect(() => {
-    return () => clearStaffPressTimer();
+    return () => {
+      clearStaffPressTimer();
+      if (scrollFrame.current) cancelAnimationFrame(scrollFrame.current);
+    };
   }, []);
 
   const getGreeting = () => {
@@ -210,7 +220,7 @@ function SliderContent() {
 
   const addToBucket = (food: FoodWithTheme) => {
     if (!isFoodAvailable(food)) return;
-    setCart([...cart, food]);
+    setCart((current) => [...current, food]);
     setIsExpanded(false);
   };
 
@@ -220,12 +230,7 @@ function SliderContent() {
   const formatOrderDate = (createdAt?: string) => {
     if (!createdAt) return 'Recent';
 
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(createdAt));
+    return orderDateFormatter.format(new Date(createdAt));
   };
 
   const openPaymentChoice = () => {
@@ -380,8 +385,19 @@ function SliderContent() {
       }
     });
 
-    if (closestFoodId !== null) setAllThemeFoodId(closestFoodId);
+    if (closestFoodId !== null) {
+      setAllThemeFoodId((current) => (current === closestFoodId ? current : closestFoodId));
+    }
   }, [activeCategory]);
+
+  const scheduleAllThemeUpdate = useCallback(() => {
+    if (scrollFrame.current) return;
+
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      updateAllThemeFromScroll();
+    });
+  }, [updateAllThemeFromScroll]);
 
   useEffect(() => {
     if (activeCategory === 'All') updateAllThemeFromScroll();
@@ -423,20 +439,20 @@ function SliderContent() {
       } as React.CSSProperties}
       className="relative h-screen w-full overflow-hidden font-sans selection:bg-orange-500"
     >
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         {activeThemeImage && (
           <motion.div
             key={`wash-${activeThemeFood?.id}`}
-            initial={{ opacity: 0, scale: 1.08 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.04 }}
-            transition={{ duration: 0.75, ease: 'easeOut' }}
-            className="pointer-events-none absolute inset-0 z-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${activeThemeImage})` }}
           >
-            <img src={activeThemeImage} alt="" aria-hidden="true" className="h-full w-full scale-125 object-cover opacity-75 blur-3xl saturate-150 contrast-125" />
-            <img src={activeThemeImage} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-20 blur-md saturate-125" />
-            <div className="absolute inset-0 bg-black/58 backdrop-blur-sm" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/80" />
+            <div className="absolute inset-0 bg-black/42" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/5 to-black/82" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.12)_48%,rgba(0,0,0,0.72)_100%)]" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -533,7 +549,7 @@ function SliderContent() {
       </header>
 
       {/* MAIN VIEWPORT */}
-      <div ref={mainViewportRef} onScroll={updateAllThemeFromScroll} className="relative h-[calc(100vh-200px)] w-full overflow-y-auto no-scrollbar pb-32">
+      <div ref={mainViewportRef} onScroll={scheduleAllThemeUpdate} className="relative h-[calc(100vh-200px)] w-full overflow-y-auto no-scrollbar pb-32">
         {activeCategory === 'All' ? (
           <div className="px-6">
             <div className="grid grid-cols-2 gap-4">
@@ -548,7 +564,7 @@ function SliderContent() {
                   className={`${classNames.glassCard} rounded-[30px] p-4 flex flex-col gap-3 transition-colors`}
                   style={allThemeFoodId === food.id ? { backgroundColor: pageTheme.glass, borderColor: pageTheme.accent } : undefined}
                 >
-                  <img src={food.imageUrl} className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
+                  <img src={food.imageUrl} loading="lazy" decoding="async" className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
                   <div>
                     <div className="mb-2"><AvailabilityBadge status={food.status} /></div>
                     <h3 className="text-white font-black uppercase italic text-[10px] truncate">{food.name}</h3>
@@ -578,6 +594,7 @@ function SliderContent() {
                     animate={{ scale: isExpanded ? 0.8 : 1, y: isExpanded ? -60 : 0, borderRadius: isExpanded ? "40px" : "500px" }}
                     transition={{ type: "spring", stiffness: 100, damping: 20 }}
                     src={currentFood.imageUrl} 
+                    decoding="async"
                     className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/10 z-10" 
                     style={{ boxShadow: '0 35px 100px rgba(0,0,0,0.62), 0 0 70px rgba(255,255,255,0.12)' }}
                     alt={currentFood.name}
@@ -638,7 +655,7 @@ function SliderContent() {
              <div className="flex-1 overflow-y-auto no-scrollbar space-y-8">
                 {cart.map((item, i) => (
                   <div key={i} className="flex gap-4 p-3 bg-white/10 rounded-2xl border border-white/10 shadow-lg shadow-black/10">
-                    <img src={item.imageUrl} className="h-12 w-12 rounded-xl object-cover" alt={item.name} />
+                    <img src={item.imageUrl} loading="lazy" decoding="async" className="h-12 w-12 rounded-xl object-cover" alt={item.name} />
                     <div className="flex-1">
                       <h4 className="text-white font-black uppercase text-[10px] tracking-tight">{item.name}</h4>
                       <p className={`${classNames.orangePrice} text-[11px]`}>KSh {item.price}</p>
