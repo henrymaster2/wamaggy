@@ -1,0 +1,13 @@
+CREATE TABLE "RestaurantLocation" (
+  "id" INTEGER NOT NULL DEFAULT 1,
+  "lat" DOUBLE PRECISION NOT NULL,
+  "lng" DOUBLE PRECISION NOT NULL,
+  "address" TEXT NOT NULL,
+  "deliveryRadiusKm" DOUBLE PRECISION NOT NULL DEFAULT 5,
+  "pricePerKm" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+
+  CONSTRAINT "RestaurantLocation_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "RestaurantLocation_singleton" CHECK ("id" = 1)
+);

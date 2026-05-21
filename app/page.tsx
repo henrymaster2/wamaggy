@@ -171,7 +171,12 @@ function SliderContent() {
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
       tableNumber,
       userId: currentUser.id,
-      items: cart,
+      items: cart.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        imageUrl: item.imageUrl,
+      })),
       total: cartTotal,
       paymentType,
       paymentStatus: 'PENDING',

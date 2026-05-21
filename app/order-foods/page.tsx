@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Search, MapPin, Navigation, ShoppingCart, Loader2, Plus, Minus, Check } from 'lucide-react';
+import { ArrowLeft, Search, MapPin, Navigation, ShoppingCart, Loader2, Plus, Minus, Check, X } from 'lucide-react';
 import Link from 'next/link';
 
 // 1. Unified Types matching the backend database models
@@ -10,6 +10,7 @@ interface FoodItem {
   id: number;
   name: string;
   price: number;
+  imageUrl: string;
   category?: string;
   status: string;
 }
@@ -24,6 +25,32 @@ interface LocationData {
   lng: number | null;
 }
 
+interface RestaurantLocation {
+  address: string;
+  lat: number;
+  lng: number;
+  deliveryRadiusKm: number;
+  pricePerKm: number;
+}
+
+const getDistanceKm = (
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+) => {
+  const earthRadiusKm = 6371;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(destination.lat - origin.lat);
+  const dLng = toRad(destination.lng - origin.lng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(origin.lat)) *
+      Math.cos(toRad(destination.lat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 export default function OrderFoods() {
   // Food fetching states
   const [foods, setFoods] = useState<FoodItem[]>([]);
@@ -32,8 +59,11 @@ export default function OrderFoods() {
 
   // Cart & UI states
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [location, setLocation] = useState<LocationData>({ address: '', lat: null, lng: null });
+  const [restaurantLocation, setRestaurantLocation] = useState<RestaurantLocation | null>(null);
   
   // Mapbox Autocomplete states
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +89,30 @@ export default function OrderFoods() {
     };
 
     fetchFoods();
+  }, []);
+
+  useEffect(() => {
+    const fetchRestaurantLocation = async () => {
+      try {
+        const res = await fetch('/api/restaurant-location');
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (data?.lat && data?.lng) {
+          setRestaurantLocation({
+            address: data.address,
+            lat: Number(data.lat),
+            lng: Number(data.lng),
+            deliveryRadiusKm: Number(data.deliveryRadiusKm || 0),
+            pricePerKm: Number(data.pricePerKm || 0),
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch restaurant location:', err);
+      }
+    };
+
+    fetchRestaurantLocation();
   }, []);
 
   // 3. Client Side Menu Search Filtering
@@ -176,6 +230,69 @@ export default function OrderFoods() {
 
   const getQuantity = (id: number) => cart.find((i) => i.id === id)?.quantity || 0;
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const selectedItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+  const deliveryDistanceKm = restaurantLocation && location.lat && location.lng
+    ? getDistanceKm(restaurantLocation, { lat: location.lat, lng: location.lng })
+    : 0;
+  const deliveryFee = restaurantLocation && deliveryDistanceKm
+    ? Math.round(deliveryDistanceKm * restaurantLocation.pricePerKm)
+    : 0;
+  const isOutsideDeliveryRadius = Boolean(
+    restaurantLocation?.deliveryRadiusKm &&
+    deliveryDistanceKm > restaurantLocation.deliveryRadiusKm
+  );
+  const orderTotal = subtotal + deliveryFee;
+
+  const submitOrder = async () => {
+    if (cart.length === 0 || isSubmitting) return;
+    if (!location.lat || !location.lng) {
+      alert('Please select or detect a delivery address first.');
+      return;
+    }
+
+    if (isOutsideDeliveryRadius) {
+      alert('This destination is outside the current delivery radius.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const expandedItems = cart.flatMap((item) =>
+      Array.from({ length: item.quantity }, () => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        imageUrl: item.imageUrl,
+      }))
+    );
+
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableNumber: `Delivery - ${location.address}`,
+          items: expandedItems,
+          total: orderTotal,
+          paymentType: 'CASH',
+          paymentStatus: 'PENDING',
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Could not submit this order.');
+      }
+
+      setCart([]);
+      setIsCartOpen(false);
+      alert('Order sent to the kitchen. Please confirm payment on delivery.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not submit this order.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-black text-white p-6 font-sans pb-40 selection:bg-orange-500">
@@ -184,14 +301,21 @@ export default function OrderFoods() {
         <Link href="/" className="inline-flex items-center gap-2 text-orange-500 font-black uppercase text-[10px] tracking-widest">
           <ArrowLeft size={16} /> Home
         </Link>
-        <div className="relative p-3 bg-white/5 rounded-xl">
-          <ShoppingCart size={18} />
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          className="relative flex items-center gap-3 bg-white text-black pl-4 pr-1.5 py-1.5 rounded-2xl active:scale-95 transition-all"
+        >
+          <span className="text-[12px] font-black italic">KSh {orderTotal.toLocaleString()}</span>
+          <span className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center">
+            <ShoppingCart size={18} />
+          </span>
           {cart.length > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full text-[9px] flex items-center justify-center font-black">
-              {cart.reduce((a, b) => a + b.quantity, 0)}
+              {selectedItemCount}
             </span>
           )}
-        </div>
+        </button>
       </div>
 
       {/* Geolocation & Destination Interface block */}
@@ -199,6 +323,17 @@ export default function OrderFoods() {
         <h2 className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-500 mb-4 flex items-center gap-2">
           <MapPin size={14} /> Delivery Destination
         </h2>
+
+        {restaurantLocation && (
+          <div className="mb-4 p-4 bg-white/5 border border-white/10 rounded-2xl">
+            <p className="text-[10px] font-black uppercase tracking-widest text-white/50">Restaurant Location</p>
+            <p className="mt-1 text-xs text-white/70 leading-relaxed">{restaurantLocation.address}</p>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-[10px] font-black uppercase tracking-widest text-orange-400">
+              <span>{restaurantLocation.deliveryRadiusKm.toLocaleString()} km radius</span>
+              <span>KSh {restaurantLocation.pricePerKm.toLocaleString()} / km</span>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3 mb-3">
           <button 
@@ -257,6 +392,11 @@ export default function OrderFoods() {
                   LOC: {location.lat.toFixed(5)}, {location.lng?.toFixed(5)}
                 </span>
               )}
+              {deliveryDistanceKm > 0 && (
+                <span className={`text-[9px] tracking-wider font-black uppercase block mt-1.5 ${isOutsideDeliveryRadius ? 'text-red-300' : 'text-emerald-300'}`}>
+                  {deliveryDistanceKm.toFixed(1)} km away · Delivery KSh {deliveryFee.toLocaleString()}
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -265,8 +405,8 @@ export default function OrderFoods() {
       {/* Menu Filter and Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-4xl font-black italic uppercase tracking-tighter">Full Menu</h1>
-          <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">Select meals to place your order</p>
+          <h1 className="text-4xl font-black italic uppercase tracking-tighter">Order Foods</h1>
+          <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">Fetched meals appear below the restaurant location</p>
         </div>
         
         <div className="relative max-w-md w-full">
@@ -304,7 +444,15 @@ export default function OrderFoods() {
                 className="flex gap-4 bg-white/5 border border-white/10 p-4 rounded-3xl items-center"
               >
                 <div className="w-20 h-20 bg-white/10 rounded-2xl overflow-hidden shrink-0">
-                   <div className="w-full h-full bg-linear-to-br from-orange-500/20 to-transparent" />
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-linear-to-br from-orange-500/20 to-transparent" />
+                  )}
                 </div>
                 
                 <div className="flex-1 min-w-0">
@@ -341,6 +489,118 @@ export default function OrderFoods() {
         </div>
       )}
 
+      {/* Cart Drawer */}
+      <AnimatePresence>
+        {isCartOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCartOpen(false)}
+              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+            />
+            <motion.aside
+              initial={{ x: '115%', opacity: 0, scale: 0.96 }}
+              animate={{ x: 0, opacity: 1, scale: 1 }}
+              exit={{ x: '115%', opacity: 0, scale: 0.96 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 210 }}
+              className="fixed right-3 top-3 bottom-3 z-[60] w-[min(92vw,420px)] rounded-[28px] border border-white/20 bg-white/10 p-5 shadow-2xl shadow-black/45 ring-1 ring-white/10 backdrop-blur-2xl flex flex-col"
+            >
+              <div className="mb-6 flex items-start justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-400">Checkout</p>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Confirm Order</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCartOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
+                {cart.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs font-black uppercase tracking-widest text-white/30">
+                    Your cart is empty
+                  </div>
+                ) : (
+                  cart.map((item) => (
+                    <div key={item.id} className="flex gap-4 rounded-2xl border border-white/10 bg-white/10 p-3 shadow-lg shadow-black/10">
+                      <img src={item.imageUrl} alt={item.name} className="h-14 w-14 rounded-xl object-cover bg-white/10" />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-[11px] font-black uppercase tracking-tight text-white">{item.name}</h3>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-white/40">Qty {item.quantity}</p>
+                        <p className="mt-1 text-xs font-black text-orange-400">KSh {(item.price * item.quantity).toLocaleString()}</p>
+                      </div>
+                      <div className="flex items-center rounded-2xl border border-white/10 bg-black/40 p-1">
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.id)}
+                          className="p-2 text-white/60 hover:text-white"
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <span className="w-5 text-center text-xs font-black text-white">{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => addToCart(item)}
+                          className="p-2 text-orange-400 hover:text-orange-300"
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Delivery Destination</p>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-white/70">
+                    {location.address || 'Select or detect your delivery destination before submitting.'}
+                  </p>
+                  {deliveryDistanceKm > 0 && (
+                    <p className={`mt-2 text-[10px] font-black uppercase tracking-widest ${isOutsideDeliveryRadius ? 'text-red-300' : 'text-emerald-300'}`}>
+                      {deliveryDistanceKm.toFixed(1)} km from restaurant
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-white/10 pt-5 space-y-3">
+                <div className="flex justify-between text-xs font-bold text-white/50">
+                  <span>Items</span>
+                  <span>KSh {subtotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-white/50">
+                  <span>Delivery</span>
+                  <span>KSh {deliveryFee.toLocaleString()}</span>
+                </div>
+                <div className="flex items-end justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Total</span>
+                  <span className="text-3xl font-black italic tracking-tighter text-white">KSh {orderTotal.toLocaleString()}</span>
+                </div>
+                {isOutsideDeliveryRadius && (
+                  <p className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-[10px] font-bold uppercase tracking-widest text-red-200">
+                    This destination is outside the restaurant delivery radius.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={submitOrder}
+                  disabled={cart.length === 0 || isSubmitting || !location.lat || isOutsideDeliveryRadius}
+                  className="w-full rounded-2xl bg-white py-5 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-black/20 transition-all active:scale-95 disabled:opacity-30"
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit Order'}
+                </button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Sticky Bottom Summary Module */}
       <AnimatePresence>
         {cart.length > 0 && (
@@ -356,16 +616,10 @@ export default function OrderFoods() {
                 <p className="text-2xl font-black text-orange-500">KSh {subtotal.toLocaleString()}</p>
               </div>
               <button 
-                onClick={() => {
-                  if (!location.lat) {
-                    alert('Please select or detect a delivery address first!');
-                    return;
-                  }
-                  alert(`Order Processing simulated!\nItems Total: KSh ${subtotal.toLocaleString()}\nDestination Coordinates: [${location.lat}, ${location.lng}]`);
-                }}
+                onClick={() => setIsCartOpen(true)}
                 className="flex-1 bg-white text-black py-4 rounded-2xl font-black italic uppercase tracking-wider text-sm hover:bg-orange-500 hover:text-white transition-all text-center"
               >
-                Proceed to Checkout
+                Review Order
               </button>
             </div>
           </motion.div>

@@ -12,12 +12,16 @@ interface Coordinates {
   lat: number;
   lng: number;
   address: string;
+  deliveryRadiusKm: number;
+  pricePerKm: number;
 }
 
 const DEFAULT_COORDS: Coordinates = {
   lat: -0.6817,
   lng: 34.7717,
-  address: 'Kisii, Kenya'
+  address: 'Kisii, Kenya',
+  deliveryRadiusKm: 5,
+  pricePerKm: 0
 };
 
 export default function RestaurantLocationPage() {
@@ -77,7 +81,14 @@ export default function RestaurantLocationPage() {
       if (!res.ok) return null;
 
       const data = await res.json();
-      if (data && data.lat && data.lng) return data as Coordinates;
+      if (data && data.lat && data.lng) {
+        return {
+          ...DEFAULT_COORDS,
+          ...data,
+          deliveryRadiusKm: Number(data.deliveryRadiusKm ?? DEFAULT_COORDS.deliveryRadiusKm),
+          pricePerKm: Number(data.pricePerKm ?? DEFAULT_COORDS.pricePerKm),
+        } as Coordinates;
+      }
     } catch (err) {
       console.error('Failed to load saved location:', err);
     }
@@ -91,7 +102,7 @@ export default function RestaurantLocationPage() {
 
     try {
       const currentCoords = await getCurrentCoordinates();
-      setCoords(currentCoords);
+      setCoords((prev) => ({ ...prev, ...currentCoords }));
       setLocationMessage('Using your browser detected current location.');
     } catch (err) {
       console.error('Failed to detect current location:', err);
@@ -113,7 +124,7 @@ export default function RestaurantLocationPage() {
         const currentCoords = await getCurrentCoordinates();
         if (cancelled) return;
 
-        setCoords(currentCoords);
+        setCoords((prev) => ({ ...prev, ...currentCoords }));
         setLocationMessage('Using your browser detected current location.');
       } catch (err) {
         console.error('Current location unavailable:', err);
@@ -181,21 +192,26 @@ export default function RestaurantLocationPage() {
       .setLngLat([initialCoords.lng, initialCoords.lat])
       .addTo(map);
 
-      const updateCoordinatesPosition = async () => {
-        const lngLat = marker.getLngLat();
-        const lat = lngLat.lat;
-        const lng = lngLat.lng;
+      const updateCoordinatesPosition = async (lat: number, lng: number) => {
+        marker.setLngLat([lng, lat]);
 
         try {
           const readableAddress = await reverseGeocode(lat, lng);
           
-          setCoords({ lat, lng, address: readableAddress });
+          setCoords((prev) => ({ ...prev, lat, lng, address: readableAddress }));
         } catch {
           setCoords((prev) => ({ ...prev, lat, lng }));
         }
       };
 
-      marker.on('dragend', updateCoordinatesPosition);
+      marker.on('dragend', () => {
+        const lngLat = marker.getLngLat();
+        updateCoordinatesPosition(lngLat.lat, lngLat.lng);
+      });
+
+      map.on('click', (event) => {
+        updateCoordinatesPosition(event.lngLat.lat, event.lngLat.lng);
+      });
 
       mapRef.current = map;
       markerRef.current = marker;
@@ -348,8 +364,46 @@ export default function RestaurantLocationPage() {
                   </div>
 
                   <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
-                    * Drag the orange pin directly inside the viewport map panel to accurately align with the physical storefront point.
+                    * Drag the orange pin or click the map to accurately align with the physical storefront point.
                   </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Delivery Radius (km)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={coords.deliveryRadiusKm}
+                        onChange={(event) => setCoords((prev) => ({
+                          ...prev,
+                          deliveryRadiusKm: Math.max(0, Number(event.target.value) || 0),
+                        }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-orange-500"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Price Per Km</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={coords.pricePerKm}
+                        onChange={(event) => setCoords((prev) => ({
+                          ...prev,
+                          pricePerKm: Math.max(0, Number(event.target.value) || 0),
+                        }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-orange-500"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Delivery Pricing</span>
+                    <p className="mt-1 text-sm font-bold text-slate-700">
+                      KSh {coords.pricePerKm.toLocaleString()} per km within {coords.deliveryRadiusKm.toLocaleString()} km
+                    </p>
+                  </div>
 
                   <button
                     type="button"
