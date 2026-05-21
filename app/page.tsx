@@ -5,32 +5,23 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence, PanInfo, Variants } from 'framer-motion';
 import { useFoodThemes, type FoodWithTheme } from './hooks/useFoodThemes';
-import { 
-  ShoppingBag, X, Utensils, LogOut, Menu, 
-  HelpCircle, Phone, Mail, BookOpen, Pizza, Calendar 
-} from 'lucide-react';
+import {
+  AvailabilityBadge,
+  CloseButton,
+  DrawerTitle,
+  FloatingHelpLink,
+  LoginModal,
+  PageFooter,
+  classNames,
+  isFoodAvailable,
+  navLinks,
+} from './menuPageUi';
+import { ShoppingBag, X, LogOut, Menu } from 'lucide-react';
 
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
 type OrderSummary = { id: number; total: number; status: string };
-type FoodStatus = 'Available' | 'Pending' | 'Not Available' | string;
 const menuCategories: Category[] = ['Food', 'Drinks', 'Fruits', 'Others', 'All'];
-
-const getStatusClass = (status: FoodStatus) => {
-  if (status === 'Available') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-  if (status === 'Pending') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
-  return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
-};
-
-const isFoodAvailable = (food?: FoodWithTheme) => food?.status === 'Available';
-
-function AvailabilityBadge({ status }: { status: FoodStatus }) {
-  return (
-    <span className={`px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest ${getStatusClass(status)}`}>
-      {status || 'Not Available'}
-    </span>
-  );
-}
 
 function SliderContent() {
   const router = useRouter();
@@ -257,7 +248,7 @@ function SliderContent() {
     setCurrentIndex((prev) => (prev + newDirection + filteredFoods.length) % filteredFoods.length);
   };
 
-  const handleDragEnd = (_: any, info: PanInfo) => {
+  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.offset.x > 50) paginate(-1);
     else if (info.offset.x < -50) paginate(1);
   };
@@ -279,7 +270,7 @@ function SliderContent() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/35 backdrop-blur-sm z-[110]"
+              className={`${classNames.overlay} z-[110]`}
             />
             <motion.div 
               initial={{ x: '-115%', opacity: 0, scale: 0.96 }} animate={{ x: 0, opacity: 1, scale: 1 }} exit={{ x: '-115%', opacity: 0, scale: 0.96 }}
@@ -287,23 +278,14 @@ function SliderContent() {
               className="fixed left-3 top-3 bottom-3 w-[min(82vw,310px)] bg-white/10 z-[120] border border-white/20 p-5 flex flex-col rounded-[28px] shadow-2xl shadow-black/45 backdrop-blur-2xl ring-1 ring-white/10"
             >
               <div className="flex justify-between items-start mb-8">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.35em] text-orange-400/90 mb-2">African Cuisine</p>
-                  <h2 className="text-white font-black italic tracking-tighter text-3xl leading-none">Menu</h2>
-                </div>
-                <button onClick={() => setIsSidebarOpen(false)} className="h-10 w-10 rounded-full border border-white/15 bg-white/10 text-white/70 flex items-center justify-center transition-all hover:bg-white hover:text-black active:scale-90">
-                  <X size={20} />
-                </button>
+                <DrawerTitle label="African Cuisine" title="Menu" />
+                <CloseButton onClick={() => setIsSidebarOpen(false)} />
               </div>
               
               <nav className="flex-1 space-y-3">
-                {[
-                  { name: 'Book Meals', icon: <Calendar size={18}/>, link: '/book-meals' },
-                  { name: 'Order Foods', icon: <Pizza size={18}/>, link: '/order-foods' },
-                  { name: 'User Manual', icon: <BookOpen size={18}/>, link: '/user-manual' },
-                ].map((item) => (
-                  <Link key={item.name} href={item.link} className="flex items-center gap-4 p-4 rounded-2xl bg-white/10 text-white/80 border border-white/10 shadow-lg shadow-black/10 hover:bg-white hover:text-black transition-all group">
-                    <span className="h-10 w-10 rounded-xl bg-orange-500/15 text-orange-400 group-hover:bg-black group-hover:text-white flex items-center justify-center transition-colors">{item.icon}</span>
+                {navLinks.map((item) => (
+                  <Link key={item.name} href={item.link} className={classNames.navLink}>
+                    <span className={classNames.navIcon}>{item.icon}</span>
                     <span className="font-black uppercase text-[11px] tracking-widest">{item.name}</span>
                   </Link>
                 ))}
@@ -350,8 +332,8 @@ function SliderContent() {
               African Cuisine
             </motion.h1>
             <div className="flex gap-2">
-              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[9px] font-black text-orange-500 uppercase">{getGreeting()}</span>
-              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[9px] font-black text-white/40 uppercase tracking-widest">T-{tableNumber}</span>
+              <span className={`${classNames.pill} text-orange-500`}>{getGreeting()}</span>
+              <span className={`${classNames.pill} text-white/40 tracking-widest`}>T-{tableNumber}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -380,13 +362,13 @@ function SliderContent() {
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                   key={food.id} 
-                  className="bg-white/5 border border-white/10 rounded-[30px] p-4 flex flex-col gap-3"
+                  className={`${classNames.glassCard} rounded-[30px] p-4 flex flex-col gap-3`}
                 >
                   <img src={food.imageUrl} className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
                   <div>
                     <div className="mb-2"><AvailabilityBadge status={food.status} /></div>
                     <h3 className="text-white font-black uppercase italic text-[10px] truncate">{food.name}</h3>
-                    <p className="text-orange-500 font-black text-[12px] italic">KSh {food.price}</p>
+                    <p className={`${classNames.orangePrice} text-[12px]`}>KSh {food.price}</p>
                   </div>
                   <button 
                     onClick={() => addToBucket(food)} disabled={!isFoodAvailable(food)}
@@ -423,7 +405,7 @@ function SliderContent() {
                       <button onClick={() => setIsExpanded(true)} className="px-10 py-3.5 bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 rounded-full font-black uppercase text-[10px] tracking-[0.3em] transition-all">View Details</button>
                     </div>
                   ) : (
-                    <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md bg-white/5 backdrop-blur-3xl border border-white/10 p-8 rounded-[40px] -mt-16 z-30 pointer-events-auto">
+                    <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className={`w-full max-w-md ${classNames.glassCard} backdrop-blur-3xl p-8 rounded-[40px] -mt-16 z-30 pointer-events-auto`}>
                       <div className="mb-4"><AvailabilityBadge status={currentFood.status} /></div>
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-black text-white uppercase italic">{currentFood.name}</h3>
@@ -447,25 +429,11 @@ function SliderContent() {
           </motion.div>
         )}
 
-        {/* GLOBAL FOOTER */}
-        <footer className="mt-12 text-center space-y-4 border-t border-white/5 pt-10 px-6">
-          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20">Powered by HENRY MASTER</p>
-          <div className="flex flex-col items-center gap-2 pb-10">
-            <a href="tel:0748172255" className="flex items-center gap-2 text-white/50 hover:text-orange-500 transition-colors">
-              <Phone size={12} /> <span className="text-[11px] font-bold">0748172255</span>
-            </a>
-            <a href="mailto:masterhenry681@gmail.com" className="flex items-center gap-2 text-white/50 hover:text-orange-500 transition-colors">
-              <Mail size={12} /> <span className="text-[11px] font-bold">masterhenry681@gmail.com</span>
-            </a>
-          </div>
-        </footer>
+        <PageFooter />
       </div>
       
 
-      {/* FLOATING HELP ICON */}
-      <Link href="/user-manual" className="fixed bottom-6 right-6 z-[90] w-14 h-14 bg-orange-600 text-white rounded-full flex items-center justify-center shadow-2xl shadow-orange-600/40 active:scale-90 transition-transform">
-        <HelpCircle size={28} />
-      </Link>
+      <FloatingHelpLink />
 
       {/* BUCKET / CART DRAWER */}
       <AnimatePresence>
@@ -474,15 +442,12 @@ function SliderContent() {
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsCartOpen(false)}
-              className="fixed inset-0 bg-black/35 backdrop-blur-sm z-[95]"
+              className={`${classNames.overlay} z-[95]`}
             />
             <motion.div initial={{ x: '115%', opacity: 0, scale: 0.96 }} animate={{ x: 0, opacity: 1, scale: 1 }} exit={{ x: '115%', opacity: 0, scale: 0.96 }} transition={{ type: "spring", damping: 24, stiffness: 210 }} className="fixed right-3 top-3 bottom-3 w-[min(92vw,400px)] z-[100] bg-white/10 backdrop-blur-2xl border border-white/20 p-5 md:p-6 flex flex-col rounded-[28px] shadow-2xl shadow-black/45 ring-1 ring-white/10">
              <div className="flex justify-between items-start mb-8">
-               <div>
-                 <p className="text-[9px] font-black uppercase tracking-[0.35em] text-orange-400/90 mb-2">Bucket</p>
-                 <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none">Your Order</h2>
-               </div>
-               <button onClick={() => setIsCartOpen(false)} className="h-10 w-10 rounded-full border border-white/15 bg-white/10 text-white/70 flex items-center justify-center transition-all hover:bg-white hover:text-black active:scale-90"><X size={20} /></button>
+               <DrawerTitle label="Bucket" title="Your Order" />
+               <CloseButton onClick={() => setIsCartOpen(false)} />
              </div>
              <div className="flex-1 overflow-y-auto no-scrollbar space-y-8">
                 {cart.map((item, i) => (
@@ -490,7 +455,7 @@ function SliderContent() {
                     <img src={item.imageUrl} className="h-12 w-12 rounded-xl object-cover" alt={item.name} />
                     <div className="flex-1">
                       <h4 className="text-white font-black uppercase text-[10px] tracking-tight">{item.name}</h4>
-                      <p className="text-orange-500 font-black text-[11px] italic">KSh {item.price}</p>
+                      <p className={`${classNames.orangePrice} text-[11px]`}>KSh {item.price}</p>
                     </div>
                     <button onClick={() => setCart(cart.filter((_, idx) => idx !== i))} className="h-8 w-8 rounded-full bg-white/5 text-white/40 hover:bg-red-500/15 hover:text-red-300 flex items-center justify-center transition-colors"><X size={14} /></button>
                   </div>
@@ -513,23 +478,7 @@ function SliderContent() {
         )}
       </AnimatePresence>
 
-      {/* LOGIN MODAL */}
-      <AnimatePresence>
-        {showLoginModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[200] bg-black backdrop-blur-3xl flex items-center justify-center p-6 text-center">
-            <div className="w-full max-w-sm">
-              <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Utensils className="text-white" size={28} /></div>
-              <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-8">African Cuisine</h2>
-              <form onSubmit={handleLogin} className="space-y-4 text-left">
-                <input name="name" required placeholder="Full Name" className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white outline-none focus:border-orange-500" />
-                <input name="email" type="email" required placeholder="Email Address" className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white outline-none focus:border-orange-500" />
-                <input name="phone" type="tel" required placeholder="Phone Number" className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white outline-none focus:border-orange-500" />
-                <button type="submit" className="w-full py-5 bg-orange-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg mt-4">Start Dining</button>
-              </form>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <LoginModal show={showLoginModal} onSubmit={handleLogin} />
 
       {/* PAGINATION DOTS */}
       {!isExpanded && activeCategory !== 'All' && (
@@ -545,8 +494,6 @@ function SliderContent() {
 
 export default function App() {
   return (
-    <Suspense fallback={<div className="h-screen bg-black" />}>
-      <SliderContent />
-    </Suspense>
+    <Suspense fallback={<div className="h-screen bg-black" />}><SliderContent /></Suspense>
   );
 }

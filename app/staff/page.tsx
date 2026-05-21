@@ -18,7 +18,8 @@ import {
   Apple,
   Layers,
   CalendarDays,
-  Bell
+  Bell,
+  MapPin // Imported MapPin for the location link
 } from 'lucide-react';
 
 type FoodStatus = 'Available' | 'Pending' | 'Not Available';
@@ -218,6 +219,7 @@ export default function AddFoodPage() {
     { href: '/staff/booked-meals', label: 'Booked Meals', icon: CalendarDays },
     { href: '/staff/notifications', label: 'Notifications', icon: Bell },
     { href: '/staff/tables', label: 'Add Table', icon: QrCode },
+    { href: '/staff/location', label: 'Restaurant Location', icon: MapPin }, // Map location added here
   ];
 
   const StaffNav = ({
