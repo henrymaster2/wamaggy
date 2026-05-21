@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, Clock, Search, Users, Utensils } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, Clock, Search, Users, Utensils } from 'lucide-react';
 import Link from 'next/link';
 
 type SavedCustomer = {
@@ -33,7 +33,7 @@ export default function BookMeals() {
   const [savedCustomer, setSavedCustomer] = useState<SavedCustomer | null>(null);
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [foodSearch, setFoodSearch] = useState('');
-  const [selectedFoodId, setSelectedFoodId] = useState('');
+  const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
   const [loadingFoods, setLoadingFoods] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -73,7 +73,15 @@ export default function BookMeals() {
     );
   }, [foods, foodSearch]);
 
-  const selectedFood = foods.find((food) => String(food.id) === selectedFoodId);
+  const selectedFoods = foods.filter((food) => selectedFoodIds.includes(String(food.id)));
+  const selectedMealsTotal = selectedFoods.reduce((sum, food) => sum + food.price, 0);
+
+  const toggleFoodSelection = (foodId: number) => {
+    const id = String(foodId);
+    setSelectedFoodIds((current) =>
+      current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id]
+    );
+  };
 
   const openPicker = (input: HTMLInputElement | null) => {
     input?.focus();
@@ -84,8 +92,8 @@ export default function BookMeals() {
     e.preventDefault();
     const form = e.currentTarget;
 
-    if (!selectedFood) {
-      alert('Please choose a meal from the available foods.');
+    if (selectedFoods.length === 0) {
+      alert('Please choose at least one meal from the available foods.');
       return;
     }
 
@@ -94,7 +102,10 @@ export default function BookMeals() {
 
     const formData = new FormData(form);
     const notes = String(formData.get('preferences') || '').trim();
-    const mealLine = `Selected meal: ${selectedFood.name} - KSh ${selectedFood.price.toLocaleString()}`;
+    const mealLines = selectedFoods
+      .map((food, index) => `${index + 1}. ${food.name} - KSh ${food.price.toLocaleString()}`)
+      .join('\n');
+    const mealLine = `Selected meals:\n${mealLines}\nTotal meals value: KSh ${selectedMealsTotal.toLocaleString()}`;
 
     const payload = {
       date: formData.get('date'),
@@ -121,7 +132,7 @@ export default function BookMeals() {
 
       form.reset();
       setFoodSearch('');
-      setSelectedFoodId('');
+      setSelectedFoodIds([]);
       setSuccess(true);
     } catch (err: any) {
       alert(err.message || 'Could not confirm booking.');
@@ -161,23 +172,51 @@ export default function BookMeals() {
                 />
               </div>
 
-              <select
-                name="selectedFood"
-                required
-                value={selectedFoodId}
-                onChange={(e) => setSelectedFoodId(e.target.value)}
-                disabled={loadingFoods || filteredFoods.length === 0}
-                className="w-full rounded-xl border border-white/10 bg-black p-4 text-white outline-none transition-all focus:border-orange-500 disabled:opacity-40"
-              >
-                <option value="">
-                  {loadingFoods ? 'Loading available foods...' : filteredFoods.length === 0 ? 'No matching foods available' : 'Select a meal'}
-                </option>
-                {filteredFoods.map((food) => (
-                  <option key={food.id} value={food.id}>
-                    {food.name} - KSh {food.price.toLocaleString()}
-                  </option>
-                ))}
-              </select>
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                {loadingFoods && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-white/40">
+                    Loading available foods...
+                  </div>
+                )}
+
+                {!loadingFoods && filteredFoods.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm font-bold text-white/40">
+                    No matching foods available.
+                  </div>
+                )}
+
+                {filteredFoods.map((food) => {
+                  const selected = selectedFoodIds.includes(String(food.id));
+
+                  return (
+                    <button
+                      key={food.id}
+                      type="button"
+                      onClick={() => toggleFoodSelection(food.id)}
+                      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                        selected
+                          ? 'border-orange-500 bg-orange-500/15 text-white'
+                          : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? 'bg-orange-600 text-white' : 'bg-white/5 text-orange-500'}`}>
+                        {selected ? <Check size={17} /> : <Utensils size={17} />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-black uppercase tracking-wide">{food.name}</span>
+                        <span className="text-[10px] font-black text-orange-400">KSh {food.price.toLocaleString()}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 p-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                  {selectedFoods.length} selected
+                </span>
+                <span className="text-sm font-black italic text-white">KSh {selectedMealsTotal.toLocaleString()}</span>
+              </div>
             </div>
           </div>
 

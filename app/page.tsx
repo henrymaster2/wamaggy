@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence, PanInfo, Variants } from 'framer-motion';
@@ -20,9 +20,70 @@ import { ShoppingBag, X, LogOut, Menu } from 'lucide-react';
 
 type Category = 'Food' | 'Drinks' | 'Fruits' | 'Others' | 'All';
 type Customer = { id: number; name: string; phone: string; email: string };
-type OrderSummary = { id: number; total: number; status: string };
+type OrderSummary = {
+  id: number;
+  total: number;
+  status: string;
+  paymentStatus?: string;
+  paymentType?: string;
+  createdAt?: string;
+  items?: { id: number; name: string; price: number; imageUrl?: string }[];
+};
 type PaymentType = 'CASH' | 'MPESA';
 const menuCategories: Category[] = ['Food', 'Drinks', 'Fruits', 'Others', 'All'];
+const drawerSpringTransition = {
+  type: "spring",
+  stiffness: 58,
+  damping: 15,
+  mass: 1.25,
+} as const;
+
+type PageTheme = {
+  accent: string;
+  glow: string;
+  glass: string;
+  soft: string;
+};
+
+const fallbackTheme: PageTheme = {
+  accent: '#ea580c',
+  glow: 'rgba(234, 88, 12, 0.38)',
+  glass: 'rgba(234, 88, 12, 0.12)',
+  soft: 'rgba(234, 88, 12, 0.16)',
+};
+
+const getThemeFromPalette = (palette?: string[]): PageTheme => {
+  const colors = palette?.length ? palette : ['#ea580c'];
+  const rgbColors = colors.map(hexToRgb).filter((color): color is { r: number; g: number; b: number } => Boolean(color));
+  const rgb = rgbColors[0];
+  if (!rgb) return fallbackTheme;
+
+  const accent = rgbToHex(rgb.r, rgb.g, rgb.b);
+
+  return {
+    accent,
+    glow: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.42)`,
+    glass: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)`,
+    soft: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`,
+  };
+};
+
+const hexToRgb = (hex?: string) => {
+  const normalized = hex?.replace('#', '');
+  if (!normalized || normalized.length !== 6) return null;
+
+  const value = Number.parseInt(normalized, 16);
+  if (Number.isNaN(value)) return null;
+
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+};
+
+const rgbToHex = (r: number, g: number, b: number) =>
+  `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 
 function SliderContent() {
   const router = useRouter();
@@ -43,12 +104,15 @@ function SliderContent() {
   const [cart, setCart] = useState<FoodWithTheme[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [allThemeFoodId, setAllThemeFoodId] = useState<number | null>(null);
 
   const [currentUser, setCurrentUser] = useState<Customer | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [, setPastOrders] = useState<OrderSummary[]>([]);
+  const [pastOrders, setPastOrders] = useState<OrderSummary[]>([]);
   const staffPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressMenuClick = useRef(false);
+  const mainViewportRef = useRef<HTMLDivElement | null>(null);
+  const allFoodCardRefs = useRef(new Map<number, HTMLDivElement>());
 
   useEffect(() => {
     const savedUser = localStorage.getItem('wamaggy_customer');
@@ -151,6 +215,18 @@ function SliderContent() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
+  const recentOrders = pastOrders.slice(0, 5);
+
+  const formatOrderDate = (createdAt?: string) => {
+    if (!createdAt) return 'Recent';
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(createdAt));
+  };
 
   const openPaymentChoice = () => {
     if (cart.length === 0 || !currentUser) return;
@@ -246,14 +322,15 @@ function SliderContent() {
     }
   };
 
-  const filteredFoods = foods.filter((item: FoodWithTheme) => 
+  const filteredFoods = useMemo(() => foods.filter((item: FoodWithTheme) => 
     activeCategory === 'All' ? true : item.category?.toLowerCase() === activeCategory.toLowerCase()
-  );
+  ), [activeCategory, foods]);
 
   useEffect(() => {
     if (targetFoodId) return;
     setCurrentIndex(0);
     setIsExpanded(false);
+    setAllThemeFoodId(null);
   }, [activeCategory, targetFoodId]);
 
   useEffect(() => {
@@ -275,13 +352,40 @@ function SliderContent() {
     setIsExpanded(true);
   }, [foods, targetFoodId]);
 
-  if (loading) return (
-    <div className="h-screen bg-black flex items-center justify-center">
-      <span className="text-white font-black animate-pulse italic tracking-tighter">AFRICAN CUISINE...</span>
-    </div>
-  );
-
   const currentFood = filteredFoods[currentIndex] as FoodWithTheme;
+  const allThemeFood = filteredFoods.find((food) => food.id === allThemeFoodId) || filteredFoods[0];
+  const activeThemeFood = activeCategory === 'All' ? allThemeFood : currentFood;
+  const pageTheme = getThemeFromPalette(activeThemeFood?.themePalette || (activeThemeFood?.themeColor ? [activeThemeFood.themeColor] : undefined));
+  const activeThemeImage = activeThemeFood?.imageUrl;
+
+  const updateAllThemeFromScroll = useCallback(() => {
+    if (activeCategory !== 'All') return;
+
+    const container = mainViewportRef.current;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const viewportCenter = containerRect.top + containerRect.height / 2;
+    let closestFoodId: number | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    allFoodCardRefs.current.forEach((node, foodId) => {
+      const rect = node.getBoundingClientRect();
+      const cardCenter = rect.top + rect.height / 2;
+      const distance = Math.abs(cardCenter - viewportCenter);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestFoodId = foodId;
+      }
+    });
+
+    if (closestFoodId !== null) setAllThemeFoodId(closestFoodId);
+  }, [activeCategory]);
+
+  useEffect(() => {
+    if (activeCategory === 'All') updateAllThemeFromScroll();
+  }, [activeCategory, filteredFoods.length, updateAllThemeFromScroll]);
 
   const paginate = (newDirection: number) => {
     if (filteredFoods.length <= 1) return;
@@ -301,9 +405,42 @@ function SliderContent() {
     exit: (direction: number) => ({ x: direction < 0 ? 500 : -500, opacity: 0, scale: 0.9, transition: { duration: 0.3 } }),
   };
 
+  if (loading) return (
+    <div className="h-screen bg-black flex items-center justify-center">
+      <span className="text-white font-black animate-pulse italic tracking-tighter">AFRICAN CUISINE...</span>
+    </div>
+  );
+
   return (
-    <main className="relative h-screen w-full overflow-hidden bg-black font-sans selection:bg-orange-500">
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black opacity-90 z-0" />
+    <motion.main
+      animate={{ backgroundColor: 'rgb(5, 5, 5)' }}
+      transition={{ duration: 0.55, ease: 'easeOut' }}
+      style={{
+        '--food-accent': pageTheme.accent,
+        '--food-glow': pageTheme.glow,
+        '--food-glass': pageTheme.glass,
+        '--food-soft': pageTheme.soft,
+      } as React.CSSProperties}
+      className="relative h-screen w-full overflow-hidden font-sans selection:bg-orange-500"
+    >
+      <AnimatePresence mode="wait">
+        {activeThemeImage && (
+          <motion.div
+            key={`wash-${activeThemeFood?.id}`}
+            initial={{ opacity: 0, scale: 1.08 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.04 }}
+            transition={{ duration: 0.75, ease: 'easeOut' }}
+            className="pointer-events-none absolute inset-0 z-0"
+          >
+            <img src={activeThemeImage} alt="" aria-hidden="true" className="h-full w-full scale-125 object-cover opacity-75 blur-3xl saturate-150 contrast-125" />
+            <img src={activeThemeImage} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-105 object-cover opacity-20 blur-md saturate-125" />
+            <div className="absolute inset-0 bg-black/58 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/80" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/35 via-black/10 to-black/90" />
 
       {/* SIDEBAR NAVIGATION */}
       <AnimatePresence>
@@ -316,7 +453,7 @@ function SliderContent() {
             />
             <motion.div 
               initial={{ x: '-115%', opacity: 0, scale: 0.96 }} animate={{ x: 0, opacity: 1, scale: 1 }} exit={{ x: '-115%', opacity: 0, scale: 0.96 }}
-              transition={{ type: "spring", damping: 24, stiffness: 210 }}
+              transition={drawerSpringTransition}
               className="fixed left-3 top-3 bottom-3 w-[min(82vw,310px)] bg-white/10 z-[120] border border-white/20 p-5 flex flex-col rounded-[28px] shadow-2xl shadow-black/45 backdrop-blur-2xl ring-1 ring-white/10"
             >
               <div className="flex justify-between items-start mb-8">
@@ -374,7 +511,7 @@ function SliderContent() {
               African Cuisine
             </motion.h1>
             <div className="flex gap-2">
-              <span className={`${classNames.pill} text-orange-500`}>{getGreeting()}</span>
+              <span className={`${classNames.pill} text-[var(--food-accent)]`}>{getGreeting()}</span>
               <span className={`${classNames.pill} text-white/40 tracking-widest`}>T-{tableNumber}</span>
             </div>
           </div>
@@ -388,7 +525,7 @@ function SliderContent() {
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
           {menuCategories.map((cat) => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-white/5 text-white/40'}`}>
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'text-black shadow-lg shadow-black/20' : 'bg-white/5 text-white/40'}`} style={activeCategory === cat ? { backgroundColor: pageTheme.accent } : undefined}>
               {cat}
             </button>
           ))}
@@ -396,7 +533,7 @@ function SliderContent() {
       </header>
 
       {/* MAIN VIEWPORT */}
-      <div className="relative h-[calc(100vh-200px)] w-full overflow-y-auto no-scrollbar pb-32">
+      <div ref={mainViewportRef} onScroll={updateAllThemeFromScroll} className="relative h-[calc(100vh-200px)] w-full overflow-y-auto no-scrollbar pb-32">
         {activeCategory === 'All' ? (
           <div className="px-6">
             <div className="grid grid-cols-2 gap-4">
@@ -404,13 +541,18 @@ function SliderContent() {
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                   key={food.id} 
-                  className={`${classNames.glassCard} rounded-[30px] p-4 flex flex-col gap-3`}
+                  ref={(node) => {
+                    if (node) allFoodCardRefs.current.set(food.id, node);
+                    else allFoodCardRefs.current.delete(food.id);
+                  }}
+                  className={`${classNames.glassCard} rounded-[30px] p-4 flex flex-col gap-3 transition-colors`}
+                  style={allThemeFoodId === food.id ? { backgroundColor: pageTheme.glass, borderColor: pageTheme.accent } : undefined}
                 >
                   <img src={food.imageUrl} className="w-full aspect-square object-cover rounded-[20px]" alt={food.name} />
                   <div>
                     <div className="mb-2"><AvailabilityBadge status={food.status} /></div>
                     <h3 className="text-white font-black uppercase italic text-[10px] truncate">{food.name}</h3>
-                    <p className={`${classNames.orangePrice} text-[12px]`}>KSh {food.price}</p>
+                    <p className="text-[12px] font-black italic text-[var(--food-accent)]">KSh {food.price}</p>
                   </div>
                   <button 
                     onClick={() => addToBucket(food)} disabled={!isFoodAvailable(food)}
@@ -436,7 +578,8 @@ function SliderContent() {
                     animate={{ scale: isExpanded ? 0.8 : 1, y: isExpanded ? -60 : 0, borderRadius: isExpanded ? "40px" : "500px" }}
                     transition={{ type: "spring", stiffness: 100, damping: 20 }}
                     src={currentFood.imageUrl} 
-                    className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/5 z-10" 
+                    className="w-64 h-64 md:w-[400px] md:h-[400px] object-cover shadow-2xl border-4 border-white/10 z-10" 
+                    style={{ boxShadow: '0 35px 100px rgba(0,0,0,0.62), 0 0 70px rgba(255,255,255,0.12)' }}
                     alt={currentFood.name}
                   />
 
@@ -457,7 +600,8 @@ function SliderContent() {
                       <div className="flex gap-3">
                         <button
                           onClick={() => addToBucket(currentFood)} disabled={!isFoodAvailable(currentFood)}
-                          className="flex-[2] py-4 bg-orange-600 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 disabled:opacity-30"
+                          className="flex-[2] py-4 text-black font-black uppercase text-[10px] tracking-widest rounded-2xl active:scale-95 disabled:opacity-30"
+                          style={{ backgroundColor: pageTheme.accent }}
                         >
                           {isFoodAvailable(currentFood) ? 'Add to bucket' : 'Unavailable'}
                         </button>
@@ -486,7 +630,7 @@ function SliderContent() {
               onClick={() => setIsCartOpen(false)}
               className={`${classNames.overlay} z-[95]`}
             />
-            <motion.div initial={{ x: '115%', opacity: 0, scale: 0.96 }} animate={{ x: 0, opacity: 1, scale: 1 }} exit={{ x: '115%', opacity: 0, scale: 0.96 }} transition={{ type: "spring", damping: 24, stiffness: 210 }} className="fixed right-3 top-3 bottom-3 w-[min(92vw,400px)] z-[100] bg-white/10 backdrop-blur-2xl border border-white/20 p-5 md:p-6 flex flex-col rounded-[28px] shadow-2xl shadow-black/45 ring-1 ring-white/10">
+            <motion.div initial={{ x: '115%', opacity: 0, scale: 0.96 }} animate={{ x: 0, opacity: 1, scale: 1 }} exit={{ x: '115%', opacity: 0, scale: 0.96 }} transition={drawerSpringTransition} className="fixed right-3 top-3 bottom-3 w-[min(92vw,400px)] z-[100] bg-white/10 backdrop-blur-2xl border border-white/20 p-5 md:p-6 flex flex-col rounded-[28px] shadow-2xl shadow-black/45 ring-1 ring-white/10">
              <div className="flex justify-between items-start mb-8">
                <DrawerTitle label="Bucket" title="Your Order" />
                <CloseButton onClick={() => setIsCartOpen(false)} />
@@ -502,6 +646,43 @@ function SliderContent() {
                     <button onClick={() => setCart(cart.filter((_, idx) => idx !== i))} className="h-8 w-8 rounded-full bg-white/5 text-white/40 hover:bg-red-500/15 hover:text-red-300 flex items-center justify-center transition-colors"><X size={14} /></button>
                   </div>
                 ))}
+
+                <div className="border-t border-white/10 pt-6">
+                  <div className="mb-4 flex items-end justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-400/90">History</p>
+                      <h3 className="text-lg font-black uppercase italic tracking-tighter text-white">Recent Orders</h3>
+                    </div>
+                  </div>
+
+                  {recentOrders.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] font-bold leading-relaxed text-white/40">
+                      Your recent orders will appear here after you place an order.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {recentOrders.map((order) => (
+                        <div key={order.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/10">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-white/35">#{order.id} · {formatOrderDate(order.createdAt)}</p>
+                              <p className="mt-1 text-sm font-black italic text-white">KSh {order.total}</p>
+                            </div>
+                            <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[8px] font-black uppercase tracking-widest text-white/60">
+                              {order.status}
+                            </span>
+                          </div>
+                          <p className="truncate text-[10px] font-bold text-white/45">
+                            {(order.items || []).map((item) => item.name).join(', ') || 'Order items'}
+                          </p>
+                          <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-orange-300/80">
+                            {order.paymentType || 'Cash'} · {order.paymentStatus || 'Pending'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
              </div>
              <div className="pt-8 border-t border-white/10">
                 <div className="flex justify-between items-end mb-6">
@@ -522,30 +703,30 @@ function SliderContent() {
 
       <AnimatePresence>
         {showPaymentModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[180] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6">
-            <motion.div initial={{ y: 30, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 30, opacity: 0, scale: 0.96 }} className="w-full max-w-sm bg-white rounded-[28px] p-6 text-black shadow-2xl">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[180] bg-black/35 backdrop-blur-sm flex items-center justify-center p-6">
+            <motion.div initial={{ y: 30, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 30, opacity: 0, scale: 0.96 }} className="w-full max-w-sm bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[28px] p-6 text-white shadow-2xl shadow-black/45 ring-1 ring-white/10">
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-600 mb-2">Payment</p>
-                  <h2 className="text-2xl font-black uppercase italic tracking-tighter">Choose Method</h2>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-400/90 mb-2">Payment</p>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">Choose Method</h2>
                 </div>
-                <button onClick={() => setShowPaymentModal(false)} className="h-10 w-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center active:scale-90">
+                <button onClick={() => setShowPaymentModal(false)} className={classNames.closeButton}>
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="mb-5 rounded-2xl bg-slate-50 border border-slate-100 p-4 flex justify-between items-end">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total</span>
-                <span className="text-2xl font-black italic">KSh {cartTotal}</span>
+              <div className="mb-5 rounded-2xl bg-white/10 border border-white/10 p-4 flex justify-between items-end shadow-lg shadow-black/10">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Total</span>
+                <span className="text-2xl font-black italic text-white">KSh {cartTotal}</span>
               </div>
 
               <label className="block mb-4">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">M-Pesa Phone</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40 block mb-2">M-Pesa Phone</span>
                 <input
                   value={mpesaPhone}
                   onChange={(e) => setMpesaPhone(e.target.value)}
                   placeholder="0712345678"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:border-orange-500"
+                  className="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-sm font-bold text-white placeholder:text-white/25 outline-none transition-colors focus:border-orange-500"
                 />
               </label>
 
@@ -560,7 +741,7 @@ function SliderContent() {
                 <button
                   onClick={() => confirmOrder('CASH')}
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] disabled:opacity-40"
+                  className="w-full py-4 bg-white/10 hover:bg-white hover:text-black text-white border border-white/10 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all disabled:opacity-40"
                 >
                   Pay Cash
                 </button>
@@ -576,11 +757,11 @@ function SliderContent() {
       {!isExpanded && activeCategory !== 'All' && (
         <div className="absolute bottom-10 left-0 w-full flex justify-center gap-3">
           {filteredFoods.map((_, i) => (
-            <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i === currentIndex ? 'w-10 bg-orange-600 shadow-[0_0_10px_rgba(234,88,12,0.5)]' : 'w-2 bg-white/10'}`} />
+            <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i === currentIndex ? 'w-10' : 'w-2 bg-white/10'}`} style={i === currentIndex ? { backgroundColor: pageTheme.accent, boxShadow: `0 0 10px ${pageTheme.glow}` } : undefined} />
           ))}
         </div>
       )}
-    </main>
+    </motion.main>
   );
 }
 

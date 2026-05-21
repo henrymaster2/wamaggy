@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { normalizeMpesaPhone, sendStkPush } from '@/lib/mpesa/stk';
 
+const formatMpesaItemLabel = (items: { name: string }[]) => {
+  const itemNames = items
+    .map((item) => item.name.trim())
+    .filter(Boolean);
+
+  if (itemNames.length === 0) return 'African Cuisine';
+  if (itemNames.length <= 2) return itemNames.join(', ');
+
+  return `${itemNames.slice(0, 2).join(', ')} +${itemNames.length - 2}`;
+};
+
 export async function POST(req: Request) {
   try {
     const { orderId, phone } = await req.json();
@@ -15,6 +26,7 @@ export async function POST(req: Request) {
 
     const order = await prisma.order.findUnique({
       where: { id: Number(orderId) },
+      include: { items: true },
     });
 
     if (!order) {
@@ -22,11 +34,12 @@ export async function POST(req: Request) {
     }
 
     const mpesaPhone = normalizeMpesaPhone(phone);
+    const itemLabel = formatMpesaItemLabel(order.items);
     const stkResponse = await sendStkPush({
       amount: order.total,
       phone: mpesaPhone,
-      accountReference: `ORDER${order.id}`,
-      transactionDesc: `African Cuisine order ${order.id}`,
+      accountReference: itemLabel,
+      transactionDesc: itemLabel,
     });
 
     await prisma.$executeRaw`
