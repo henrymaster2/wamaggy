@@ -114,7 +114,7 @@ export default function InventoryPage() {
               <ArrowLeft size={20} className="text-slate-500" />
             </Link>
             <div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-900 uppercase italic">Wamaggy Choma</h1>
+              <h1 className="text-4xl font-black tracking-tight text-slate-900 uppercase italic">African CUisine</h1>
               <p className="text-slate-500 font-medium">Menu Inventory Control</p>
             </div>
           </div>
